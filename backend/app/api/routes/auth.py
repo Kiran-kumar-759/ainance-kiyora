@@ -10,7 +10,7 @@ from app.api.deps import (
     verify_csrf,
 )
 from app.core.config import settings
-from app.core.security import generate_csrf_token
+from app.core.security import generate_csrf_token, verify_csrf_token_signature
 from app.models.user import User
 from app.schemas.auth import (
     AuthResponse,
@@ -71,10 +71,20 @@ def _clear_auth_cookies(response: Response) -> None:
 
 @router.get("/csrf", response_model=CsrfResponse, summary="Obtain or refresh CSRF token")
 def get_csrf(
-    response: Response, csrf_cookie: str | None = Cookie(None, alias=settings.CSRF_COOKIE_NAME)
+    response: Response,
+    csrf_cookie: str | None = Cookie(None, alias=settings.CSRF_COOKIE_NAME),
+    refresh: bool = False,
 ):
-    """Provides a fresh CSRF token and sets the corresponding cookie."""
-    token = csrf_cookie or generate_csrf_token()
+    """
+    Provides a valid HMAC-signed CSRF token.
+    If the existing cookie is missing, has an invalid signature, or refresh=True,
+    generates and sets a fresh signed token.
+    """
+    if refresh or not csrf_cookie or not verify_csrf_token_signature(csrf_cookie):
+        token = generate_csrf_token()
+    else:
+        token = csrf_cookie
+
     response.set_cookie(
         key=settings.CSRF_COOKIE_NAME,
         value=token,
@@ -160,8 +170,24 @@ def login(
 
 
 @router.get("/me", response_model=UserResponse, summary="Get currently authenticated user")
-def get_me(current_user: User = Depends(get_current_user)):
-    """Restores session and returns the current user profile."""
+def get_me(
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    csrf_cookie: str | None = Cookie(None, alias=settings.CSRF_COOKIE_NAME),
+):
+    """Restores session and returns the current user profile. Heals missing or invalid CSRF cookie."""
+    if not csrf_cookie or not verify_csrf_token_signature(csrf_cookie):
+        token = generate_csrf_token()
+        response.set_cookie(
+            key=settings.CSRF_COOKIE_NAME,
+            value=token,
+            httponly=False,
+            secure=settings.COOKIE_SECURE,
+            samesite=settings.COOKIE_SAMESITE,
+            max_age=settings.SESSION_EXPIRY_SECONDS,
+            path="/",
+            domain=settings.COOKIE_DOMAIN,
+        )
     return UserResponse.model_validate(current_user)
 
 

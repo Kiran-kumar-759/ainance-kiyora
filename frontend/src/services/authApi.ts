@@ -23,21 +23,26 @@ class AuthApiError extends Error {
 // In-memory CSRF token cache
 let cachedCsrfToken: string | null = null;
 
-function getCsrfFromCookie(): string | null {
+export function getCsrfFromCookie(): string | null {
   if (typeof document === 'undefined') return null;
   const match = document.cookie.match(/(?:^|; )\s*pfm_csrf=([^;]*)/);
   return match ? decodeURIComponent(match[1]) : null;
 }
 
-export async function fetchCsrfToken(): Promise<string> {
+export function isValidCsrfToken(token: string | null): boolean {
+  return typeof token === 'string' && token.includes('.') && token.length > 40;
+}
+
+export async function fetchCsrfToken(forceRefresh = false): Promise<string> {
   const cookieToken = getCsrfFromCookie();
-  if (cookieToken) {
+  if (!forceRefresh && isValidCsrfToken(cookieToken)) {
     cachedCsrfToken = cookieToken;
-    return cookieToken;
+    return cookieToken!;
   }
 
   try {
-    const res = await fetch(`${config.apiBaseUrl}/api/v1/auth/csrf`, {
+    const url = `${config.apiBaseUrl}/api/v1/auth/csrf${forceRefresh ? '?refresh=true' : ''}`;
+    const res = await fetch(url, {
       method: 'GET',
       credentials: 'include',
     });
@@ -67,21 +72,46 @@ async function authRequest<T>(
 
   // Add CSRF token for mutating requests
   if (['POST', 'PATCH', 'DELETE', 'PUT'].includes(method)) {
-    const token = cachedCsrfToken || getCsrfFromCookie() || (await fetchCsrfToken());
+    let token = cachedCsrfToken || getCsrfFromCookie();
+    if (!isValidCsrfToken(token)) {
+      token = await fetchCsrfToken(true);
+    }
     if (token) {
       headers['X-CSRF-Token'] = token;
     }
   }
 
-  const response = await fetch(url, {
+  let response = await fetch(url, {
     ...options,
     headers,
     credentials: 'include', // Ensure session cookies are transmitted
   });
 
+  // Auto-recovery: If 403 CSRF error, force refresh CSRF token and retry once
+  if (response.status === 403 && ['POST', 'PATCH', 'DELETE', 'PUT'].includes(method)) {
+    const cloned = response.clone();
+    try {
+      const errJson = await cloned.json();
+      const detail = String(errJson?.detail || '');
+      if (detail.toLowerCase().includes('csrf')) {
+        const freshToken = await fetchCsrfToken(true);
+        if (freshToken) {
+          headers['X-CSRF-Token'] = freshToken;
+          response = await fetch(url, {
+            ...options,
+            headers,
+            credentials: 'include',
+          });
+        }
+      }
+    } catch {
+      // Cloned body read failed
+    }
+  }
+
   // Update cached CSRF token if cookie updated
   const freshCookieToken = getCsrfFromCookie();
-  if (freshCookieToken) {
+  if (freshCookieToken && isValidCsrfToken(freshCookieToken)) {
     cachedCsrfToken = freshCookieToken;
   }
 

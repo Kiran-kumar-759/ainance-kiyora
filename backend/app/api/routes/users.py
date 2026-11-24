@@ -1,7 +1,9 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Cookie, Depends, Response
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db, verify_csrf
+from app.core.config import settings
+from app.core.security import generate_csrf_token, verify_csrf_token_signature
 from app.models.user import User
 from app.schemas.user import (
     UserPreferenceResponse,
@@ -16,8 +18,24 @@ user_service = UserService()
 
 
 @router.get("/me", response_model=UserResponse, summary="Get current user profile")
-def get_user_profile(current_user: User = Depends(get_current_user)):
-    """Returns profile information for the authenticated user."""
+def get_user_profile(
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    csrf_cookie: str | None = Cookie(None, alias=settings.CSRF_COOKIE_NAME),
+):
+    """Returns profile information for the authenticated user and heals CSRF cookie if needed."""
+    if not csrf_cookie or not verify_csrf_token_signature(csrf_cookie):
+        token = generate_csrf_token()
+        response.set_cookie(
+            key=settings.CSRF_COOKIE_NAME,
+            value=token,
+            httponly=False,
+            secure=settings.COOKIE_SECURE,
+            samesite=settings.COOKIE_SAMESITE,
+            max_age=settings.SESSION_EXPIRY_SECONDS,
+            path="/",
+            domain=settings.COOKIE_DOMAIN,
+        )
     return user_service.get_profile(current_user)
 
 

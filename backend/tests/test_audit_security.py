@@ -50,6 +50,37 @@ def test_csrf_cookie_injection_protection(client: TestClient):
     assert res3.status_code == 200
 
 
+def test_csrf_auto_healing_and_refresh(client: TestClient):
+    """
+    Verifies that calling /api/v1/auth/csrf with an invalid or unsigned cookie automatically
+    heals and replaces the cookie with a fresh cryptographically signed token.
+    Also verifies ?refresh=true generates a new token.
+    """
+    from app.core.security import verify_csrf_token_signature
+
+    # 1. Invalid cookie is passed to /csrf
+    res = client.get("/api/v1/auth/csrf", cookies={settings.CSRF_COOKIE_NAME: "invalid_stale_token"})
+    assert res.status_code == 200
+    issued_token = res.json()["csrf_token"]
+    assert issued_token != "invalid_stale_token"
+    assert verify_csrf_token_signature(issued_token) is True
+    assert res.cookies.get(settings.CSRF_COOKIE_NAME) == issued_token
+
+    # 2. Subsequent call with valid token retains the valid token
+    res2 = client.get("/api/v1/auth/csrf", cookies={settings.CSRF_COOKIE_NAME: issued_token})
+    assert res2.status_code == 200
+    assert res2.json()["csrf_token"] == issued_token
+
+    # 3. Explicit refresh forces rotation
+    res3 = client.get(
+        "/api/v1/auth/csrf?refresh=true", cookies={settings.CSRF_COOKIE_NAME: issued_token}
+    )
+    assert res3.status_code == 200
+    rotated_token = res3.json()["csrf_token"]
+    assert rotated_token != issued_token
+    assert verify_csrf_token_signature(rotated_token) is True
+
+
 def test_concurrent_verification_token_consumption():
     """
     Verifies that concurrent requests attempting to consume the same email verification token

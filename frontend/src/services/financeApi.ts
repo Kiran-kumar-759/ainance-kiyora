@@ -1,4 +1,5 @@
 import { config } from '../lib/config';
+import { fetchCsrfToken, getCsrfFromCookie, isValidCsrfToken } from './authApi';
 import {
   AccountSummary,
   BankingConnection,
@@ -25,12 +26,6 @@ class FinanceApiError extends Error {
   }
 }
 
-function getCsrfFromCookie(): string | null {
-  if (typeof document === 'undefined') return null;
-  const match = document.cookie.match(/(?:^|; )\s*pfm_csrf=([^;]*)/);
-  return match ? decodeURIComponent(match[1]) : null;
-}
-
 async function financeRequest<T>(
   endpoint: string,
   options: RequestInit = {}
@@ -46,17 +41,42 @@ async function financeRequest<T>(
 
   // Attach CSRF token for mutating requests
   if (['POST', 'PATCH', 'DELETE', 'PUT'].includes(method)) {
-    const token = getCsrfFromCookie();
+    let token = getCsrfFromCookie();
+    if (!isValidCsrfToken(token)) {
+      token = await fetchCsrfToken(true);
+    }
     if (token) {
       headers['X-CSRF-Token'] = token;
     }
   }
 
-  const response = await fetch(url, {
+  let response = await fetch(url, {
     ...options,
     headers,
     credentials: 'include',
   });
+
+  // Auto-recovery: If 403 CSRF error, force refresh CSRF token and retry once
+  if (response.status === 403 && ['POST', 'PATCH', 'DELETE', 'PUT'].includes(method)) {
+    const cloned = response.clone();
+    try {
+      const errJson = await cloned.json();
+      const detail = String(errJson?.detail || '');
+      if (detail.toLowerCase().includes('csrf')) {
+        const freshToken = await fetchCsrfToken(true);
+        if (freshToken) {
+          headers['X-CSRF-Token'] = freshToken;
+          response = await fetch(url, {
+            ...options,
+            headers,
+            credentials: 'include',
+          });
+        }
+      }
+    } catch {
+      // Cloned body read failed
+    }
+  }
 
   if (response.status === 204) {
     return {} as T;
