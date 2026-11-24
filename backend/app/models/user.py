@@ -14,6 +14,14 @@ if TYPE_CHECKING:
         UserPreference,
         UserSession,
     )
+    from app.models.finance import (
+        BankingConnection,
+        FinancialAccount,
+        FinancialCategory,
+        FinancialTransaction,
+        FinancialTransfer,
+        LedgerJournal,
+    )
 
 
 class User(Base):
@@ -61,6 +69,36 @@ class User(Base):
     )
     reset_tokens: Mapped[list["PasswordResetToken"]] = relationship(
         "PasswordResetToken",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    accounts: Mapped[list["FinancialAccount"]] = relationship(
+        "FinancialAccount",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    categories: Mapped[list["FinancialCategory"]] = relationship(
+        "FinancialCategory",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    transactions: Mapped[list["FinancialTransaction"]] = relationship(
+        "FinancialTransaction",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    transfers: Mapped[list["FinancialTransfer"]] = relationship(
+        "FinancialTransfer",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    journals: Mapped[list["LedgerJournal"]] = relationship(
+        "LedgerJournal",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    banking_connections: Mapped[list["BankingConnection"]] = relationship(
+        "BankingConnection",
         back_populates="user",
         cascade="all, delete-orphan",
     )

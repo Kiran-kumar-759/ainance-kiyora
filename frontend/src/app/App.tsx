@@ -12,6 +12,11 @@ import { OnboardingWizard } from '../pages/onboarding/OnboardingWizard';
 import { ProfilePage } from '../pages/profile/ProfilePage';
 import { PreferencesPage } from '../pages/settings/PreferencesPage';
 import { SessionsPage } from '../pages/settings/SessionsPage';
+import { DashboardPage } from '../pages/finance/DashboardPage';
+import { AccountsPage } from '../pages/finance/AccountsPage';
+import { TransactionsPage } from '../pages/finance/TransactionsPage';
+import { TransfersPage } from '../pages/finance/TransfersPage';
+import { BankingPage } from '../pages/banking/BankingPage';
 
 const AppContent: React.FC = () => {
   const {
@@ -26,9 +31,16 @@ const AppContent: React.FC = () => {
     refresh,
   } = useSystemStatus();
 
-  const { isLoading: authLoading } = useAuth();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [currentView, setCurrentView] = useState<string>('foundation');
   const [tokenParam, setTokenParam] = useState<string>('');
+
+  // When user becomes authenticated and is on foundation, steer to dashboard
+  useEffect(() => {
+    if (isAuthenticated && currentView === 'foundation') {
+      setCurrentView('dashboard');
+    }
+  }, [isAuthenticated]);
 
   // Check URL parameters for email verification or password reset tokens
   useEffect(() => {
@@ -54,6 +66,21 @@ const AppContent: React.FC = () => {
 
   const renderContent = () => {
     switch (currentView) {
+      case 'dashboard':
+        return <DashboardPage onNavigate={handleNavigate} />;
+
+      case 'accounts':
+        return <AccountsPage onNavigate={handleNavigate} />;
+
+      case 'transactions':
+        return <TransactionsPage onNavigate={handleNavigate} />;
+
+      case 'transfers':
+        return <TransfersPage onNavigate={handleNavigate} />;
+
+      case 'banking':
+        return <BankingPage onNavigate={handleNavigate} />;
+
       case 'login':
         return <LoginPage onNavigate={handleNavigate} />;
 
@@ -73,7 +100,7 @@ const AppContent: React.FC = () => {
         return (
           <OnboardingWizard
             onComplete={() => {
-              setCurrentView('foundation');
+              setCurrentView('dashboard');
             }}
           />
         );

@@ -5,6 +5,16 @@ from app.models.auth import (
     UserPreference,
     UserSession,
 )
+from app.models.finance import (
+    BankingConnection,
+    BankingSyncRun,
+    FinancialAccount,
+    FinancialCategory,
+    FinancialTransaction,
+    FinancialTransfer,
+    LedgerEntry,
+    LedgerJournal,
+)
 from app.models.system import SystemSetting
 from app.models.user import User
 
@@ -16,4 +26,12 @@ __all__ = [
     "EmailVerificationToken",
     "PasswordResetToken",
     "UserPreference",
+    "FinancialAccount",
+    "FinancialCategory",
+    "FinancialTransaction",
+    "FinancialTransfer",
+    "LedgerJournal",
+    "LedgerEntry",
+    "BankingConnection",
+    "BankingSyncRun",
 ]

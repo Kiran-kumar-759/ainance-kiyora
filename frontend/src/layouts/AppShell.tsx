@@ -30,6 +30,8 @@ import {
   ChevronRight,
   LogIn,
   UserPlus,
+  ArrowRightLeft,
+  Landmark,
 } from 'lucide-react';
 import { config } from '../lib/config';
 import { Badge } from '../components/common/Badge';
@@ -137,17 +139,44 @@ export const AppShell: React.FC<AppShellProps> = ({
         ]
       : []),
     {
-      title: 'Overview',
+      title: 'Financial Engine',
       items: [
-        { name: 'Dashboard', icon: LayoutDashboard, futurePhase: 'Phase 5' },
+        {
+          name: 'Dashboard',
+          icon: LayoutDashboard,
+          view: 'dashboard',
+          active: currentView === 'dashboard',
+        },
+        {
+          name: 'Accounts',
+          icon: Wallet,
+          view: 'accounts',
+          active: currentView === 'accounts',
+        },
+        {
+          name: 'Transactions',
+          icon: Receipt,
+          view: 'transactions',
+          active: currentView === 'transactions',
+        },
+        {
+          name: 'Transfers',
+          icon: ArrowRightLeft,
+          view: 'transfers',
+          active: currentView === 'transfers',
+        },
+        {
+          name: 'Bank Connections',
+          icon: Landmark,
+          view: 'banking',
+          active: currentView === 'banking',
+        },
         { name: 'Analytics', icon: BarChart3, futurePhase: 'Phase 5' },
       ],
     },
     {
       title: 'Money Management',
       items: [
-        { name: 'Accounts', icon: Wallet, futurePhase: 'Phase 2' },
-        { name: 'Transactions', icon: Receipt, futurePhase: 'Phase 2' },
         { name: 'Imports', icon: FileSpreadsheet, futurePhase: 'Phase 4' },
         { name: 'Budgets', icon: PieChart, futurePhase: 'Phase 6' },
         { name: 'Savings Goals', icon: Target, futurePhase: 'Phase 6' },
@@ -192,7 +221,7 @@ export const AppShell: React.FC<AppShellProps> = ({
               {config.appTitle}
             </span>
             <div className="text-[10px] text-slate-400 font-mono tracking-wider">
-              INDIA SAAS • Phase 1
+              INDIA SAAS • Phase 2
             </div>
           </div>
         </div>

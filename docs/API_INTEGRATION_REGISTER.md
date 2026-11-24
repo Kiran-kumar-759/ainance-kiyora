@@ -25,6 +25,7 @@ This project follows a strict **free-first, open-source-first, and privacy-first
 | **Financial Engine** | **Python Decimal** | Native deterministic services | Exact arithmetic, zero floating-point drift, zero cost. | **Phase 0–2** |
 | **Charts & Analytics** | **Open-source libraries** | Recharts (React), NumPy/Pandas (Python) | Completely client-side and open-source backend analytical processing. | **Phase 5 & 6** |
 | **Email Delivery** | **Provider-Independent Adapter** | In-Memory Mailbox / Standard smtplib | Local in-memory mailbox for development and tests; standard library `smtplib` in production (`SMTP_ENABLED=True`). Zero paid cloud email vendor lock-in. | **Phase 1 (Active)** |
+| **Banking Integration** | **Provider-Independent Adapter** | Simulated Sandbox / Planned RBI Account Aggregator | 100% free simulated sandbox with deterministic Indian PSU, Private, and Neobank fixtures (`DemoBankingProvider`). Zero credentials collected. Zero live cloud dependency. | **Phase 2 (Active)** |
 
 ---
 
