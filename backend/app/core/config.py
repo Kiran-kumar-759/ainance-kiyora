@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     # Background tasks
     REDIS_URL: str = "redis://127.0.0.1:6379/0"
 
+    # External Provider Conventions (Future Phases 7, 8, 10 - not required in Phase 0)
+    GROQ_API_KEY: str | None = None
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    TAVILY_API_KEY: str | None = None
+    OCR_ENGINE: str = "paddleocr"
+
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def assemble_cors_origins(cls, v: str | list[str]) -> list[str]:

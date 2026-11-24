@@ -134,6 +134,7 @@ npm run build
 ## 6. Phase Documentation Links
 
 - [Architecture Blueprint](file:///home/ckirankumar/Finance%20AI/docs/ARCHITECTURE.md)
+- [API & External Service Integration Register](file:///home/ckirankumar/Finance%20AI/docs/API_INTEGRATION_REGISTER.md)
 - [Database Design & Policies](file:///home/ckirankumar/Finance%20AI/docs/DATABASE.md)
 - [Developer Guide](file:///home/ckirankumar/Finance%20AI/docs/DEVELOPMENT.md)
 - [Phase 0 Completion Report](file:///home/ckirankumar/Finance%20AI/docs/PHASE_0_REPORT.md)

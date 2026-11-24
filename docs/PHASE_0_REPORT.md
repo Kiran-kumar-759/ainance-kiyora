@@ -160,6 +160,7 @@ The objective of Phase 0 is to construct the architectural, database, backend, a
   - Repositories (`app/repositories`) encapsulate database operations.
   - Models (`app/models`) represent SQLAlchemy tables.
   - Schemas (`app/schemas`) handle Pydantic validation.
+- **Free-First AI & External Services Register:** Established `docs/API_INTEGRATION_REGISTER.md` defining Groq (LLM, Phase 8/10), Tavily (Search, Phase 10), and PaddleOCR (Local OCR, Phase 7) with strict data minimization, provider-independent adapters, and zero client-side key exposure.
 - **Legitimate Entity:** Created `SystemSetting` model to verify persistence, Alembic migrations, repository queries, and service mapping without generating fake user financial data.
 
 ---

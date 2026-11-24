@@ -125,3 +125,16 @@ The platform enforces Indian regional financial standards at the foundation laye
   - Periodic bill reminder and notification triggers.
   - Batch categorizations and spending intelligence updates.
 - In Phase 0, connection parameters and dependencies are established without executing artificial background tasks.
+
+---
+
+## 7. Free-First AI & External Services Architecture
+
+The project adheres to a strict free-first, privacy-first external services strategy detailed in [`docs/API_INTEGRATION_REGISTER.md`](file:///home/ckirankumar/Finance%20AI/docs/API_INTEGRATION_REGISTER.md):
+
+1. **Deterministic Calculations First:** Financial calculations, ledger math, interest, and EMIs are executed strictly with Python `Decimal` algorithms, never delegated to an LLM.
+2. **Local Open-Source OCR (Phase 7):** Local PaddleOCR extracts data from Indian bills and receipts. No paid cloud vision APIs are permitted.
+3. **Groq LLM via Adapter (Phase 8 & 10):** Fast inference on open models (e.g., Llama 3) with strict data minimization and PII scrubbing before external transmission.
+4. **Tavily Web Search (Phase 10):** Real-time web retrieval for current tax and market data with ground-truth citations and aggressive caching.
+5. **Adapter Isolation:** All external integrations must implement domain service interfaces (`LlmServiceAdapter`, `SearchServiceAdapter`, `OcrServiceAdapter`). API keys must never be exposed to the frontend.
+
