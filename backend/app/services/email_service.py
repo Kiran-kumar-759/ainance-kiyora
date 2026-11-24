@@ -48,6 +48,46 @@ class EmailService:
                 return msg.token
         return None
 
+    def _deliver(self, message: EmailMessage) -> bool:
+        """
+        Delivers an email message.
+        Always records to in-memory mailbox (for testing and audit inspection).
+        When settings.SMTP_ENABLED is True, dispatches via standard SMTP.
+        """
+        self._sent_mailbox.append(message)
+
+        if not settings.SMTP_ENABLED:
+            logger.info(
+                "Email recorded in test mailbox for %s: %s", message.to_email, message.subject
+            )
+            return True
+
+        try:
+            import smtplib
+            from email.mime.multipart import MIMEMultipart
+            from email.mime.text import MIMEText
+
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = message.subject
+            msg["From"] = f"{settings.EMAILS_FROM_NAME} <{settings.EMAILS_FROM_EMAIL}>"
+            msg["To"] = message.to_email
+
+            msg.attach(MIMEText(message.plain_content, "plain"))
+            msg.attach(MIMEText(message.html_content, "html"))
+
+            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10) as server:
+                if settings.SMTP_TLS:
+                    server.starttls()
+                if settings.SMTP_USER and settings.SMTP_PASSWORD:
+                    server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+                server.send_message(msg)
+
+            logger.info("Email dispatched via SMTP to %s: %s", message.to_email, message.subject)
+            return True
+        except Exception as err:
+            logger.error("Failed SMTP delivery to %s: %s", message.to_email, str(err))
+            return False
+
     def send_verification_email(
         self,
         to_email: str,
@@ -87,20 +127,14 @@ class EmailService:
         </html>
         """
 
-        try:
-            message = EmailMessage(
-                to_email=to_email,
-                subject=subject,
-                html_content=html_text,
-                plain_content=plain_text,
-                token=raw_token,
-            )
-            self._sent_mailbox.append(message)
-            logger.info("Verification email queued successfully for %s", to_email)
-            return True
-        except Exception as err:
-            logger.error("Failed to dispatch verification email to %s: %s", to_email, str(err))
-            return False
+        message = EmailMessage(
+            to_email=to_email,
+            subject=subject,
+            html_content=html_text,
+            plain_content=plain_text,
+            token=raw_token,
+        )
+        return self._deliver(message)
 
     def send_password_reset_email(
         self,
@@ -142,20 +176,14 @@ class EmailService:
         </html>
         """
 
-        try:
-            message = EmailMessage(
-                to_email=to_email,
-                subject=subject,
-                html_content=html_text,
-                plain_content=plain_text,
-                token=raw_token,
-            )
-            self._sent_mailbox.append(message)
-            logger.info("Password reset email queued successfully for %s", to_email)
-            return True
-        except Exception as err:
-            logger.error("Failed to dispatch password reset email to %s: %s", to_email, str(err))
-            return False
+        message = EmailMessage(
+            to_email=to_email,
+            subject=subject,
+            html_content=html_text,
+            plain_content=plain_text,
+            token=raw_token,
+        )
+        return self._deliver(message)
 
 
 email_service = EmailService()

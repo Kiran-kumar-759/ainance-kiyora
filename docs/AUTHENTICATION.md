@@ -13,9 +13,10 @@ The system is architected as a **stateful, server-side session-based architectur
 | Threat / Attack Vector | Risk | Architectural Defense Mechanism |
 | :--- | :--- | :--- |
 | **XSS Token Theft** | High | Session tokens are stored **exclusively** in `HttpOnly` cookies (`pfm_session`). JavaScript cannot read or extract session tokens from `document.cookie`, `localStorage`, or `sessionStorage`. |
-| **CSRF (Cross-Site Request Forgery)** | Critical | Double-submit CSRF pattern. Every mutating request (`POST`, `PATCH`, `DELETE`, `PUT`) requires a matching `X-CSRF-Token` HTTP header paired with the `pfm_csrf` cookie (`SameSite=Lax`). |
+| **CSRF (Cross-Site Request Forgery)** | Critical | Cryptographically signed double-submit CSRF pattern. Every mutating request (`POST`, `PATCH`, `DELETE`, `PUT`) requires a matching `X-CSRF-Token` HTTP header paired with the `pfm_csrf` cookie (`SameSite=Lax`). Tokens are signed using server-side HMAC-SHA256 (`<token>.<signature>`) preventing cookie injection or subdomain-based cookie tossing attacks. |
 | **Credential Database Breach** | Critical | Passwords hashed using **Argon2id** (`m=65536, t=3, p=4, keylen=32`), the state-of-the-art password hashing standard resistant to GPU/ASIC brute-force attacks. |
 | **Session Token Database Compromise** | Critical | **Zero raw tokens in the database**. All session tokens, email verification tokens, and password reset tokens are stored as **SHA-256 hashes**. A database leak exposes only hashed values, rendering replay impossible. |
+| **Concurrent Token Consumption Race** | High | Atomic conditional updates (`UPDATE ... WHERE used_at IS NULL AND expires_at > now`) guarantee single-use consumption even under simultaneous multi-threaded race conditions. |
 | **Timing Attacks on Authentication** | Medium | Constant-time password verification via `argon2-cffi`. When a non-existent email is queried, a dummy Argon2id hash is computed to equalize response times against user enumeration. |
 | **Credential Stuffing / Brute Force** | High | Sliding-window in-memory rate limiter per IP and endpoint (configurable via `LOGIN_RATE_LIMIT_PER_MINUTE`, etc.). |
 | **Cross-Tenant Data Tampering** | Critical | Explicit `user_id` ownership constraints enforced at the repository and service layers. User A cannot view, mutate, or delete User B's sessions or records. |
@@ -62,29 +63,32 @@ sequenceDiagram
    - Generation: `secrets.token_urlsafe(32)` (256 bits of cryptographic entropy).
    - Storage: `user_sessions.token_hash = sha256(raw_token)`.
    - Lifespan: 7 days (`604800` seconds).
-   - Invalidation: Deleted from DB on `/logout`, all deleted on `/logout-all` or password reset.
+   - Invalidation: Soft-invalidated by setting `revoked_at = now()` on `/logout`, all revoked on `/logout-all` or password reset.
 2. **CSRF Token (`pfm_csrf`):**
-   - Generation: `secrets.token_hex(32)`.
+   - Generation: `secrets.token_hex(32) + "." + hmac_sha256(SECRET_KEY, raw_hex)`.
    - Cookie Flags: `SameSite=Lax`, `Path=/`, not HttpOnly (so frontend can read and send in `X-CSRF-Token` header).
+   - Verification: Checks both token equality and valid server-side HMAC signature.
 3. **Email Verification Token:**
    - Generation: `secrets.token_urlsafe(32)`.
-   - Lifespan: 24 hours. Single-use (deleted upon successful verification).
+   - Lifespan: 24 hours. Single-use (marked with `used_at = now()` atomically; concurrent attempts rejected).
 4. **Password Reset Token:**
    - Generation: `secrets.token_urlsafe(32)`.
-   - Lifespan: 60 minutes. Single-use (deleted upon successful reset, invalidates all sessions).
+   - Lifespan: 60 minutes. Single-use (marked with `used_at = now()` atomically, revokes all active sessions).
 
 ---
 
-## 4. Double-Submit CSRF Protection
+## 4. Signed Double-Submit CSRF Protection
 
 Mutating requests (`POST`, `PATCH`, `DELETE`, `PUT`) are intercepted by the `verify_csrf` FastAPI dependency:
 
 1. The client requests a CSRF token via `GET /api/v1/auth/csrf` (or receives one on login/register).
-2. The server sets the cookie `pfm_csrf` containing the token.
-3. For any state-modifying action, the client includes the token in the `X-CSRF-Token` HTTP header.
-4. The backend verifies:
-   $$\text{hmac.compare\_digest}(\text{Header Token}, \text{Cookie Token}) == \text{True}$$
-5. If mismatched or missing, the request is rejected immediately with HTTP 403 Forbidden.
+2. The server generates a random 32-byte hex string and appends an HMAC-SHA256 signature using `settings.SECRET_KEY`: `<raw_token>.<signature>`.
+3. The server sets the cookie `pfm_csrf` containing the signed token.
+4. For any state-modifying action, the client includes the token in the `X-CSRF-Token` HTTP header.
+5. The backend verifies:
+   - Token equality: `secrets.compare_digest(csrf_header, csrf_cookie)`
+   - Cryptographic validity: `verify_csrf_token_signature(csrf_cookie)`
+6. If mismatched, missing, unsigned, or forged by a malicious subdomain or attacker, the request is rejected immediately with HTTP 403 Forbidden.
 
 ---
 

@@ -145,10 +145,13 @@ CREATE TABLE user_sessions (
     ip_address VARCHAR(45),
     expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    last_used_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+    last_used_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    revoked_at TIMESTAMP WITH TIME ZONE
 );
 CREATE INDEX ix_user_sessions_user_id ON user_sessions(user_id);
 CREATE UNIQUE INDEX ix_user_sessions_token_hash ON user_sessions(token_hash);
+CREATE INDEX ix_user_sessions_expires_at ON user_sessions(expires_at);
+CREATE INDEX ix_user_sessions_revoked_at ON user_sessions(revoked_at);
 
 -- Email Verification Single-Use Tokens
 CREATE TABLE email_verification_tokens (
@@ -156,9 +159,11 @@ CREATE TABLE email_verification_tokens (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     token_hash VARCHAR(64) UNIQUE NOT NULL,
     expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    used_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
 CREATE UNIQUE INDEX ix_email_verification_tokens_token_hash ON email_verification_tokens(token_hash);
+CREATE INDEX ix_email_verification_tokens_user_id ON email_verification_tokens(user_id);
 
 -- Password Reset Single-Use Tokens
 CREATE TABLE password_reset_tokens (
@@ -166,9 +171,11 @@ CREATE TABLE password_reset_tokens (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     token_hash VARCHAR(64) UNIQUE NOT NULL,
     expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    used_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
 CREATE UNIQUE INDEX ix_password_reset_tokens_token_hash ON password_reset_tokens(token_hash);
+CREATE INDEX ix_password_reset_tokens_user_id ON password_reset_tokens(user_id);
 
 -- Regional & User Preferences (India Defaults)
 CREATE TABLE user_preferences (

@@ -1,6 +1,6 @@
 import json
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     API_V1_PREFIX: str = "/api/v1"
     BACKEND_HOST: str = "127.0.0.1"
     BACKEND_PORT: int = 8000
+    SECRET_KEY: str = "dev-insecure-secret-key-change-in-production-123456789"
 
     # PostgreSQL Database
     DATABASE_URL: str = Field(
@@ -60,8 +61,13 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = "http://localhost:5173"
     EMAILS_FROM_EMAIL: str = "support@personalfinancemanager.in"
     EMAILS_FROM_NAME: str = "AI Personal Finance Manager"
+    SMTP_ENABLED: bool = False
     SMTP_HOST: str = "localhost"
     SMTP_PORT: int = 1025
+    SMTP_TLS: bool = False
+    SMTP_USER: str | None = None
+    SMTP_PASSWORD: str | None = None
+    TRUSTED_PROXIES: list[str] = ["127.0.0.1", "::1"]
 
     # Rate Limiting
     RATE_LIMIT_LOGIN_MAX: int = 10  # Max per minute
@@ -86,6 +92,18 @@ class Settings(BaseSettings):
         elif isinstance(v, list):
             return v
         return ["http://localhost:5173", "http://127.0.0.1:5173"]
+
+    @model_validator(mode="after")
+    def validate_production_security(self) -> "Settings":
+        """Ensures production configuration cannot run with insecure cookies or default dev secret keys."""
+        if self.ENVIRONMENT.lower() == "production":
+            if not self.COOKIE_SECURE:
+                self.COOKIE_SECURE = True
+            if self.SECRET_KEY == "dev-insecure-secret-key-change-in-production-123456789":
+                raise ValueError(
+                    "In production, SECRET_KEY must be configured with a strong secret."
+                )
+        return self
 
     @property
     def safe_database_url(self) -> str:

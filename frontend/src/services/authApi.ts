@@ -175,7 +175,7 @@ export const authApi = {
 
   getOnboarding: () => authRequest<OnboardingStatus>('/api/v1/onboarding'),
 
-  updateOnboarding: (data: Partial<UserPreferences> & { full_name?: string }) =>
+  updateOnboarding: (data: Partial<UserPreferences> & { full_name?: string; current_step?: number }) =>
     authRequest<OnboardingStatus>('/api/v1/onboarding', {
       method: 'PATCH',
       body: JSON.stringify(data),

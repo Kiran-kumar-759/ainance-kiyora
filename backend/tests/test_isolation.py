@@ -110,6 +110,10 @@ def test_plaintext_secrets_never_stored_in_database(client: TestClient, db_sessi
         assert raw_session_token != s.token_hash
 
     # Query verification tokens
-    v_tokens = db_session.query(EmailVerificationToken).filter(EmailVerificationToken.user_id == user.id).all()
+    v_tokens = (
+        db_session.query(EmailVerificationToken)
+        .filter(EmailVerificationToken.user_id == user.id)
+        .all()
+    )
     for vt in v_tokens:
         assert len(vt.token_hash) == 64

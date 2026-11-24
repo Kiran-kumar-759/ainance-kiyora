@@ -242,7 +242,7 @@ class AuthService:
         token_hash_val = hash_token(raw_token)
         token_record = self.token_repo.get_verification_token(db, token_hash_val)
 
-        if not token_record or token_record.used_at is not None:
+        if not token_record:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid or already used verification token.",
@@ -255,7 +255,14 @@ class AuthService:
                 detail="Verification token has expired. Please request a new one.",
             )
 
-        self.token_repo.mark_verification_used(db, token_record)
+        # Atomically mark token as used; fails if concurrent request already claimed it
+        claimed = self.token_repo.mark_verification_used(db, token_hash_val)
+        if not claimed:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or already used verification token.",
+            )
+
         user = self.user_repo.get_by_id(db, token_record.user_id)
         if not user:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
@@ -352,7 +359,7 @@ class AuthService:
         token_hash_val = hash_token(req.token)
         token_record = self.token_repo.get_reset_token(db, token_hash_val)
 
-        if not token_record or token_record.used_at is not None:
+        if not token_record:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid or already used password reset token.",
@@ -365,6 +372,14 @@ class AuthService:
                 detail="Password reset token has expired. Please request a new one.",
             )
 
+        # Atomically mark token as used; fails if concurrent request already claimed it
+        claimed = self.token_repo.mark_reset_used(db, token_hash_val)
+        if not claimed:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or already used password reset token.",
+            )
+
         user = self.user_repo.get_by_id(db, token_record.user_id)
         if not user or not user.is_active:
             raise HTTPException(
@@ -374,7 +389,6 @@ class AuthService:
 
         # Hash new password
         user.password_hash = hash_password(req.new_password)
-        self.token_repo.mark_reset_used(db, token_record)
 
         # Revoke ALL existing active sessions
         self.session_repo.revoke_all_for_user(db, user.id)

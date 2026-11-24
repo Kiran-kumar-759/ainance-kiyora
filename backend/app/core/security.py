@@ -1,8 +1,11 @@
 import hashlib
+import hmac
 import secrets
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
+
+from app.core.config import settings
 
 # Configure Argon2id with OWASP recommended parameters
 # memory_cost=65536 (64 MB), time_cost=3, parallelism=4
@@ -44,9 +47,29 @@ def hash_token(raw_token: str) -> str:
     return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
 
 
-def generate_csrf_token() -> str:
-    """Generates a cryptographically secure hex CSRF token."""
-    return secrets.token_hex(32)
+def generate_csrf_token(secret_key: str | None = None) -> str:
+    """
+    Generates a cryptographically secure HMAC-SHA256 signed CSRF token.
+    Format: <raw_hex>.<signature>
+    Prevents cookie injection and subdomain-based forged cookie attacks.
+    """
+    key = (secret_key or settings.SECRET_KEY).encode("utf-8")
+    raw = secrets.token_hex(32)
+    sig = hmac.new(key, raw.encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"{raw}.{sig}"
+
+
+def verify_csrf_token_signature(token: str, secret_key: str | None = None) -> bool:
+    """Verifies that a CSRF token was cryptographically signed by the server's secret key."""
+    if not token or "." not in token:
+        return False
+    parts = token.split(".", 1)
+    if len(parts) != 2:
+        return False
+    raw, sig = parts
+    key = (secret_key or settings.SECRET_KEY).encode("utf-8")
+    expected_sig = hmac.new(key, raw.encode("utf-8"), hashlib.sha256).hexdigest()
+    return secrets.compare_digest(sig, expected_sig)
 
 
 def normalize_email(email: str) -> str:

@@ -39,6 +39,21 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
   const [monthlySummary, setMonthlySummary] = useState(preferences?.notification_preferences?.monthly_summary ?? true);
 
   useEffect(() => {
+    // Restore saved onboarding step from server on mount
+    const loadStatus = async () => {
+      try {
+        const status = await authApi.getOnboarding();
+        if (status.current_step && !status.onboarding_completed) {
+          setCurrentStep(status.current_step);
+        }
+      } catch {
+        // Fallback to initial
+      }
+    };
+    loadStatus();
+  }, []);
+
+  useEffect(() => {
     if (user?.full_name) setFullName(user.full_name);
     if (preferences) {
       setCurrency(preferences.preferred_currency || 'INR');
@@ -53,9 +68,10 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
     }
   }, [user, preferences]);
 
-  const saveCurrentStepData = async () => {
-    const patchData: Partial<UserPreferences> & { full_name?: string } = {
+  const saveCurrentStepData = async (stepToSave?: number) => {
+    const patchData: Partial<UserPreferences> & { full_name?: string; current_step?: number } = {
       full_name: fullName,
+      current_step: stepToSave ?? currentStep,
       preferred_currency: currency,
       locale,
       timezone,
@@ -73,10 +89,11 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
     setErrorMessage(null);
     setIsSubmitting(true);
     try {
-      await saveCurrentStepData();
       if (currentStep < 5) {
+        await saveCurrentStepData(currentStep + 1);
         setCurrentStep((prev) => prev + 1);
       } else {
+        await saveCurrentStepData(5);
         await handleComplete();
       }
     } catch (err: unknown) {

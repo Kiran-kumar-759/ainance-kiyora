@@ -36,6 +36,7 @@ export interface OnboardingStatus {
   onboarding_completed: boolean;
   is_email_verified: boolean;
   full_name: string;
+  current_step?: number;
   preferences: UserPreferences;
 }
 

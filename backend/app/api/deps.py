@@ -5,7 +5,7 @@ from fastapi import Cookie, Depends, Header, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.security import hash_token
+from app.core.security import hash_token, verify_csrf_token_signature
 from app.db.session import get_db
 from app.models.user import User
 from app.repositories.session_repository import SessionRepository
@@ -118,4 +118,10 @@ def verify_csrf(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="CSRF token validation failed.",
+        )
+
+    if not verify_csrf_token_signature(csrf_cookie):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="CSRF token signature is invalid or forged.",
         )

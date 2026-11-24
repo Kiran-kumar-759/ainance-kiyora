@@ -43,10 +43,25 @@ class TokenRepository:
     def mark_verification_used(
         self,
         db: Session,
-        token: EmailVerificationToken,
-    ) -> None:
-        token.used_at = datetime.now(UTC)
+        token_hash: str,
+    ) -> bool:
+        """
+        Atomically marks a verification token as used IF AND ONLY IF used_at IS NULL.
+        Returns True if this operation successfully claimed the token, False if already consumed or expired.
+        """
+        now = datetime.now(UTC)
+        stmt = (
+            update(EmailVerificationToken)
+            .where(
+                EmailVerificationToken.token_hash == token_hash,
+                EmailVerificationToken.used_at.is_(None),
+                EmailVerificationToken.expires_at > now,
+            )
+            .values(used_at=now)
+        )
+        result = db.execute(stmt)
         db.commit()
+        return result.rowcount > 0
 
     def invalidate_pending_verification_tokens(
         self,
@@ -96,10 +111,25 @@ class TokenRepository:
     def mark_reset_used(
         self,
         db: Session,
-        token: PasswordResetToken,
-    ) -> None:
-        token.used_at = datetime.now(UTC)
+        token_hash: str,
+    ) -> bool:
+        """
+        Atomically marks a password reset token as used IF AND ONLY IF used_at IS NULL.
+        Returns True if this operation successfully claimed the token, False if already consumed or expired.
+        """
+        now = datetime.now(UTC)
+        stmt = (
+            update(PasswordResetToken)
+            .where(
+                PasswordResetToken.token_hash == token_hash,
+                PasswordResetToken.used_at.is_(None),
+                PasswordResetToken.expires_at > now,
+            )
+            .values(used_at=now)
+        )
+        result = db.execute(stmt)
         db.commit()
+        return result.rowcount > 0
 
     def invalidate_pending_reset_tokens(
         self,

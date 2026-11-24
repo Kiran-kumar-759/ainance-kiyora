@@ -61,19 +61,19 @@ Alembic migration revision `987e7368d0c9` (`create_auth_and_user_tables`) was ge
 
 - **Cookie Parameters:**
   - Name: `pfm_session`
-  - Flags: `HttpOnly=True`, `SameSite=Lax`, `Path=/`, `Max-Age=604800` (7 days), `Secure` (configurable via `COOKIE_SECURE`).
-- **Sliding Activity Tracking:** Every authenticated request updates `last_used_at` on the session row.
-- **Explicit Revocation:** Users can revoke individual sessions by ID or terminate all active sessions via `/api/v1/auth/logout-all`.
-- **Password Reset Invalidation:** Resetting a password automatically deletes all active sessions for that user across all devices.
+  - Flags: `HttpOnly=True`, `SameSite=Lax`, `Path=/`, `Max-Age=604800` (7 days), `Secure` (automatically enforced in production via `validate_production_security`).
+- **Sliding Activity Tracking:** Every authenticated request updates `last_used_at` on the session row (throttled to once every 60s).
+- **Explicit Revocation:** Users can revoke individual sessions by ID or terminate all active sessions via `/api/v1/auth/logout-all`. Sessions are marked with `revoked_at = now()` for complete auditability.
+- **Password Reset Invalidation:** Resetting a password automatically marks all active sessions for that user as revoked (`revoked_at = now()`).
 
 ---
 
 ## 6. CSRF Protection Implementation
 
-- **Pattern:** Double-submit cookie with cryptographically strong tokens.
-- **Cookie:** `pfm_csrf` set on login, registration, and `/csrf`. Flags: `SameSite=Lax`, `Path=/`.
-- **Header:** `X-CSRF-Token` required on all `POST`, `PATCH`, `DELETE`, and `PUT` requests.
-- **Validation:** Server verifies `hmac.compare_digest(header_token, cookie_token)`. Returns HTTP 403 Forbidden on mismatch or omission.
+- **Pattern:** Cryptographically signed double-submit cookie pattern.
+- **Cookie:** `pfm_csrf` set on login, registration, and `/csrf`. Format: `<raw_32byte_hex>.<hmac_sha256_signature>`. Flags: `SameSite=Lax`, `Path=/`.
+- **Header:** `X-CSRF-Token` required on all state-modifying requests (`POST`, `PATCH`, `DELETE`, and `PUT`).
+- **Validation:** Server verifies both token equality (`secrets.compare_digest(header_token, cookie_token)`) and server-side HMAC-SHA256 signature validity. Injected or forged cookies from untrusted subdomains are rejected with HTTP 403 Forbidden.
 
 ---
 
@@ -99,11 +99,11 @@ Alembic migration revision `987e7368d0c9` (`create_auth_and_user_tables`) was ge
 
 ## 9. Email Service Implementation
 
-- **Adapter:** `EmailServiceAdapter` abstracting delivery.
+- **Adapter:** `EmailService` abstracting delivery.
 - **Environment Behavior:**
-  - In development and test runs, emails are collected into `InMemoryTestMailbox`.
-  - In production, outbound dispatch utilizes standard SMTP.
-- **Content:** Responsive HTML templates with plain-text fallbacks for email verification and password reset.
+  - In development and test runs (`SMTP_ENABLED=False`), emails are collected into `InMemoryTestMailbox`.
+  - In production (`SMTP_ENABLED=True`), outbound dispatch utilizes standard library `smtplib` with TLS/authentication and graceful error logging.
+- **Content:** Responsive HTML templates with plain-text fallbacks for email verification and password reset. No sensitive credentials or raw tokens are logged.
 
 ---
 
@@ -202,8 +202,8 @@ Alembic migration revision `987e7368d0c9` (`create_auth_and_user_tables`) was ge
 ## 18. Test Coverage and Test Results
 
 ### Backend Test Results (pytest):
-- **Total Tests:** 20 passed (13 Phase 1 tests + 7 Phase 0 foundation tests).
-- **Execution Time:** 3.32 seconds.
+- **Total Tests:** 26 passed (6 Audit Security & Regression + 13 Phase 1 auth/user/onboarding + 7 Phase 0 foundation tests).
+- **Execution Time:** ~4.5 seconds.
 - **Command:** `cd backend && ./venv/bin/pytest -v`
 
 ### Frontend Test Results (vitest):

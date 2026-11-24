@@ -24,7 +24,7 @@ This project follows a strict **free-first, open-source-first, and privacy-first
 | **Task Broker & Cache** | **Valkey / Redis** | Local Valkey 8 | High-performance open-source in-memory data store, zero hosting cost. | **Phase 0 (Active)** |
 | **Financial Engine** | **Python Decimal** | Native deterministic services | Exact arithmetic, zero floating-point drift, zero cost. | **Phase 0–2** |
 | **Charts & Analytics** | **Open-source libraries** | Recharts (React), NumPy/Pandas (Python) | Completely client-side and open-source backend analytical processing. | **Phase 5 & 6** |
-| **Email Delivery** | **Provider-Independent Adapter** | In-Memory Mailbox / Standard SMTP | Local in-memory mailbox for development and tests; standard SMTP in production. Zero paid cloud email vendor lock-in. | **Phase 1 (Active)** |
+| **Email Delivery** | **Provider-Independent Adapter** | In-Memory Mailbox / Standard smtplib | Local in-memory mailbox for development and tests; standard library `smtplib` in production (`SMTP_ENABLED=True`). Zero paid cloud email vendor lock-in. | **Phase 1 (Active)** |
 
 ---
 

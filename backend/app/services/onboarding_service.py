@@ -23,10 +23,19 @@ class OnboardingService:
         if not pref:
             pref = self.pref_repo.create_defaults(db, user.id)
 
+        current_step = 1
+        if (
+            pref
+            and pref.notification_preferences
+            and isinstance(pref.notification_preferences, dict)
+        ):
+            current_step = int(pref.notification_preferences.get("current_step", 1))
+
         return OnboardingStatusResponse(
             onboarding_completed=user.onboarding_completed,
             is_email_verified=user.is_email_verified,
             full_name=user.full_name,
+            current_step=current_step,
             preferences=UserPreferenceResponse.model_validate(pref),
         )
 
@@ -53,11 +62,19 @@ class OnboardingService:
             pref_updates["timezone"] = req.timezone
         if req.date_format is not None:
             pref_updates["date_format"] = req.date_format
-        if req.notification_preferences is not None:
-            pref_updates["notification_preferences"] = req.notification_preferences
 
-        if pref_updates:
-            self.pref_repo.update(db, pref, **pref_updates)
+        current_notifs = (
+            dict(pref.notification_preferences)
+            if isinstance(pref.notification_preferences, dict)
+            else {}
+        )
+        if req.current_step is not None:
+            current_notifs["current_step"] = req.current_step
+        if req.notification_preferences is not None:
+            current_notifs.update(req.notification_preferences)
+        pref_updates["notification_preferences"] = current_notifs
+
+        self.pref_repo.update(db, pref, **pref_updates)
 
         return self.get_status(db, user)
 
