@@ -86,13 +86,19 @@ To ensure clean future implementation without architectural rewrites, domain bou
 
 ```text
 backend/app/
-├── core/                  # Global settings, security, logging, error handlers
+├── core/                  # Global settings, security (Argon2id, CSRF, SHA-256 tokens), rate limiting
 ├── db/                    # SQLAlchemy engine, session lifecycle, Alembic base
+├── models/                # Declarative models: User, UserSession, UserPreference, etc.
+├── repositories/          # Repositories: user_repository, session_repository, token_repository, etc.
+├── services/              # Domain services: auth_service, user_service, onboarding_service, email_service
 ├── api/
+│   ├── deps.py            # Security dependencies: get_current_user, require_verified_user, verify_csrf
 │   ├── routes/
 │   │   ├── health.py      # Liveness & readiness probes
 │   │   ├── system.py      # Platform metadata (Phase 0)
-│   │   ├── auth.py        # Planned: User registration, JWT, MFA (Phase 1)
+│   │   ├── auth.py        # Implemented (Phase 1): Register, login, session revocation, email verify, password reset
+│   │   ├── users.py       # Implemented (Phase 1): User profile, preferences management
+│   │   ├── onboarding.py  # Implemented (Phase 1): 5-step onboarding wizard persistence
 │   │   ├── accounts.py    # Planned: Bank, Demat, Card accounts (Phase 2)
 │   │   ├── transactions.py# Planned: Manual & parsed ledger records (Phase 2)
 │   │   ├── imports.py     # Planned: Statement upload & parsing (Phase 4)

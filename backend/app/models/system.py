@@ -11,6 +11,7 @@ class SystemSetting(Base):
     Legitimate system configuration & platform foundation entity.
     Stores operational metadata and settings without simulating fake user/financial records.
     """
+
     __tablename__ = "system_settings"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)

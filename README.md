@@ -1,19 +1,28 @@
-# AI Personal Finance Manager — India (Phase 0 Foundation)
+# AI Personal Finance Manager — India (Phase 1: Authentication & User Management)
 
-An India-first, multi-user SaaS AI Personal Finance Manager designed for exact financial calculations, strict user data privacy, and a modular monolithic architecture.
+An India-first, multi-user SaaS AI Personal Finance Manager designed for exact financial calculations, strict user data privacy, secure server-side sessions, and a modular monolithic architecture.
 
 ---
 
 ## 1. Project Overview
 
-This repository represents **Phase 0: Product Foundation + Functional Demo UI**. It establishes the complete end-to-end foundation connecting a PostgreSQL database, a FastAPI backend service, and a responsive React frontend interface.
+This repository includes **Phase 0: Product Foundation + Functional Demo UI** and **Phase 1: Authentication, User Management, Account Isolation & Onboarding**.
 
 ### Key Foundation Highlights
-- **India-First Regional Configuration:** Native Indian Rupee (`₹` / `INR`), Indian number system (Lakhs and Crores), Indian fiscal year calendar (April 1 to March 31), and IST timezone handling.
+- **India-First Regional Configuration:** Native Indian Rupee (`₹` / `INR`), Indian number system (Lakhs and Crores), Indian fiscal year calendar (April 1 to March 31), and Asia/Kolkata timezone handling.
+- **Enterprise Identity & Authentication (Phase 1):**
+  - Argon2id password hashing (`m=65536, t=3, p=4, keylen=32`).
+  - Server-side opaque session tokens stored as SHA-256 hashes in PostgreSQL; zero plaintext tokens in database or client storage.
+  - Double-submit CSRF protection on mutating requests (`pfm_csrf` cookie + `X-CSRF-Token` header).
+  - Rate limiting (sliding window in-memory limiter).
+  - Provider-independent email delivery adapter with responsive HTML templates.
+  - Multi-step onboarding wizard with regional preference defaults (INR, en-IN, Asia/Kolkata).
+  - Multi-session management (active sessions inspection, single-session revocation, logout-all).
+  - Strict row-level multi-tenant account isolation enforced across all database queries.
 - **Exact Financial Precision:** Decimal/NUMERIC typing policy preventing floating-point rounding errors.
-- **PostgreSQL as Single Source of Truth:** Real database connectivity with connection pooling, Alembic migration management, and automated readiness probes.
+- **PostgreSQL as Single Source of Truth:** Real database connectivity with connection pooling, Alembic migration management (`987e7368d0c9`), and automated readiness probes.
 - **Modular Monolith Architecture:** Explicit boundaries between API routes, domain services, repositories, schemas, and models.
-- **Connected Functional UI:** Live React demo interface displaying real-time backend and database diagnostics with honest error handling.
+- **Connected Functional UI:** Live React demo interface with complete registration, login, session restoration, onboarding wizard, user profile, preferences, session management, and system diagnostics.
 
 ---
 
@@ -133,8 +142,10 @@ npm run build
 
 ## 6. Phase Documentation Links
 
+- [Authentication Architecture & Security](file:///home/ckirankumar/Finance%20AI/docs/AUTHENTICATION.md)
 - [Architecture Blueprint](file:///home/ckirankumar/Finance%20AI/docs/ARCHITECTURE.md)
 - [API & External Service Integration Register](file:///home/ckirankumar/Finance%20AI/docs/API_INTEGRATION_REGISTER.md)
 - [Database Design & Policies](file:///home/ckirankumar/Finance%20AI/docs/DATABASE.md)
 - [Developer Guide](file:///home/ckirankumar/Finance%20AI/docs/DEVELOPMENT.md)
 - [Phase 0 Completion Report](file:///home/ckirankumar/Finance%20AI/docs/PHASE_0_REPORT.md)
+- [Phase 1 Completion Report](file:///home/ckirankumar/Finance%20AI/docs/PHASE_1_REPORT.md)

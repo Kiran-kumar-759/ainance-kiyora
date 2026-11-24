@@ -97,9 +97,11 @@ DATABASE_URL="postgresql+psycopg://tenderpilot:tenderpilot@localhost:5432/pfm_te
 
 ---
 
-## 5. Phase 0 Schema
+## 5. Schema Revisions & Entities
 
-The Phase 0 schema contains only the system foundation metadata entity (`system_settings`) to verify end-to-end ORM, repository, and API workflows:
+### 5.1 System Foundation (`system_settings`) — Phase 0
+
+The Phase 0 schema contains the system foundation metadata entity (`system_settings`) to verify end-to-end ORM, repository, and API workflows:
 
 ```sql
 CREATE TABLE system_settings (
@@ -112,4 +114,73 @@ CREATE TABLE system_settings (
 );
 
 CREATE UNIQUE INDEX ix_system_settings_key ON system_settings(key);
+```
+
+### 5.2 Identity, Sessions & Preferences — Phase 1 (Revision `987e7368d0c9`)
+
+Phase 1 introduces the complete multi-user authentication, session, and isolation tables:
+
+```sql
+-- Core User Account
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    full_name VARCHAR(150) NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    is_email_verified BOOLEAN NOT NULL DEFAULT FALSE,
+    onboarding_completed BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    last_login_at TIMESTAMP WITH TIME ZONE
+);
+CREATE UNIQUE INDEX ix_users_email ON users(email);
+
+-- Active User Sessions (Server-side opaque token hashes)
+CREATE TABLE user_sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash VARCHAR(64) UNIQUE NOT NULL,
+    user_agent VARCHAR(500),
+    ip_address VARCHAR(45),
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    last_used_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+CREATE INDEX ix_user_sessions_user_id ON user_sessions(user_id);
+CREATE UNIQUE INDEX ix_user_sessions_token_hash ON user_sessions(token_hash);
+
+-- Email Verification Single-Use Tokens
+CREATE TABLE email_verification_tokens (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash VARCHAR(64) UNIQUE NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX ix_email_verification_tokens_token_hash ON email_verification_tokens(token_hash);
+
+-- Password Reset Single-Use Tokens
+CREATE TABLE password_reset_tokens (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash VARCHAR(64) UNIQUE NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX ix_password_reset_tokens_token_hash ON password_reset_tokens(token_hash);
+
+-- Regional & User Preferences (India Defaults)
+CREATE TABLE user_preferences (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    preferred_currency VARCHAR(10) NOT NULL DEFAULT 'INR',
+    locale VARCHAR(20) NOT NULL DEFAULT 'en-IN',
+    timezone VARCHAR(50) NOT NULL DEFAULT 'Asia/Kolkata',
+    date_format VARCHAR(20) NOT NULL DEFAULT 'DD/MM/YYYY',
+    notification_preferences JSON NOT NULL DEFAULT '{}'::json,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX ix_user_preferences_user_id ON user_preferences(user_id);
 ```

@@ -22,7 +22,6 @@ class SystemSettingResponse(SystemSettingBase):
     updated_at: datetime
 
 
-
 class PlatformInfoResponse(BaseModel):
     app_name: str
     version: str

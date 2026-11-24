@@ -86,10 +86,19 @@ Open `http://127.0.0.1:5173` in your browser.
 ## 4. Running Tests & Quality Checks
 
 ### Backend Tests (pytest)
-Runs against real PostgreSQL `pfm_test` database:
+Runs against real PostgreSQL `pfm_test` database (verifies system health, auth flows, Argon2id hashing, CSRF verification, rate limiting, and multi-user data isolation):
 ```bash
 cd backend
-./venv/bin/pytest
+./venv/bin/pytest -v
+```
+
+### Inspecting Sent Test Emails
+In development and automated testing, emails (verification links, password reset codes) are captured in-memory by `email_service.mailbox`:
+```python
+from app.services.email_service import email_service
+# In pytest fixtures or test assertions:
+last_email = email_service.mailbox[-1]
+print(last_email["subject"], last_email["html_content"])
 ```
 
 ### Backend Linting & Formatting (Ruff)

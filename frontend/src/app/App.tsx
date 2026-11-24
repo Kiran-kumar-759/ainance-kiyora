@@ -1,40 +1,129 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { AuthProvider, useAuth } from '../context/AuthContext';
 import { AppShell } from '../layouts/AppShell';
 import { SystemStatusView } from '../features/status/SystemStatusView';
 import { useSystemStatus } from '../hooks/useSystemStatus';
+import { LoginPage } from '../pages/auth/LoginPage';
+import { RegisterPage } from '../pages/auth/RegisterPage';
+import { ForgotPasswordPage } from '../pages/auth/ForgotPasswordPage';
+import { ResetPasswordPage } from '../pages/auth/ResetPasswordPage';
+import { VerifyEmailPage } from '../pages/auth/VerifyEmailPage';
+import { OnboardingWizard } from '../pages/onboarding/OnboardingWizard';
+import { ProfilePage } from '../pages/profile/ProfilePage';
+import { PreferencesPage } from '../pages/settings/PreferencesPage';
+import { SessionsPage } from '../pages/settings/SessionsPage';
 
-export const App: React.FC = () => {
+const AppContent: React.FC = () => {
   const {
     health,
     readiness,
     platform,
-    isLoading,
-    error,
+    isLoading: statusLoading,
+    error: statusError,
     backendReachable,
     databaseReady,
     lastChecked,
     refresh,
   } = useSystemStatus();
 
+  const { isLoading: authLoading } = useAuth();
+  const [currentView, setCurrentView] = useState<string>('foundation');
+  const [tokenParam, setTokenParam] = useState<string>('');
+
+  // Check URL parameters for email verification or password reset tokens
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const token = urlParams.get('token');
+      const action = urlParams.get('action');
+
+      if (token) {
+        setTokenParam(token);
+        if (action === 'reset-password' || window.location.pathname.includes('reset-password')) {
+          setCurrentView('reset-password');
+        } else {
+          setCurrentView('verify-email');
+        }
+      }
+    }
+  }, []);
+
+  const handleNavigate = (view: string) => {
+    setCurrentView(view);
+  };
+
+  const renderContent = () => {
+    switch (currentView) {
+      case 'login':
+        return <LoginPage onNavigate={handleNavigate} />;
+
+      case 'register':
+        return <RegisterPage onNavigate={handleNavigate} />;
+
+      case 'forgot-password':
+        return <ForgotPasswordPage onNavigate={handleNavigate} />;
+
+      case 'reset-password':
+        return <ResetPasswordPage token={tokenParam} onNavigate={handleNavigate} />;
+
+      case 'verify-email':
+        return <VerifyEmailPage token={tokenParam} onNavigate={handleNavigate} />;
+
+      case 'onboarding':
+        return (
+          <OnboardingWizard
+            onComplete={() => {
+              setCurrentView('foundation');
+            }}
+          />
+        );
+
+      case 'profile':
+        return <ProfilePage onNavigate={handleNavigate} />;
+
+      case 'preferences':
+        return <PreferencesPage onNavigate={handleNavigate} />;
+
+      case 'sessions':
+        return <SessionsPage onNavigate={handleNavigate} />;
+
+      case 'foundation':
+      default:
+        return (
+          <SystemStatusView
+            health={health}
+            readiness={readiness}
+            platform={platform}
+            isLoading={statusLoading}
+            error={statusError}
+            backendReachable={backendReachable}
+            databaseReady={databaseReady}
+            lastChecked={lastChecked}
+            onRefresh={refresh}
+          />
+        );
+    }
+  };
+
   return (
     <AppShell
       backendReachable={backendReachable}
       databaseReady={databaseReady}
-      isLoading={isLoading}
+      isLoading={statusLoading || authLoading}
       onRefresh={refresh}
+      currentView={currentView}
+      onNavigate={handleNavigate}
     >
-      <SystemStatusView
-        health={health}
-        readiness={readiness}
-        platform={platform}
-        isLoading={isLoading}
-        error={error}
-        backendReachable={backendReachable}
-        databaseReady={databaseReady}
-        lastChecked={lastChecked}
-        onRefresh={refresh}
-      />
+      {renderContent()}
     </AppShell>
+  );
+};
+
+export const App: React.FC = () => {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 };
 

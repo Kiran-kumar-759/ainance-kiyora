@@ -43,6 +43,30 @@ class Settings(BaseSettings):
     # Background tasks
     REDIS_URL: str = "redis://127.0.0.1:6379/0"
 
+    # Authentication & Session Settings (Phase 1)
+    SESSION_COOKIE_NAME: str = "pfm_session"
+    SESSION_EXPIRY_SECONDS: int = 60 * 60 * 24 * 7  # 7 days
+    COOKIE_SECURE: bool = False  # Set to True in production HTTPS
+    COOKIE_SAMESITE: str = "lax"
+    COOKIE_DOMAIN: str | None = None
+    CSRF_COOKIE_NAME: str = "pfm_csrf"
+    CSRF_HEADER_NAME: str = "X-CSRF-Token"
+
+    # Token Lifespans
+    EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS: int = 24
+    PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 60
+
+    # Frontend URL & Email Delivery (Phase 1)
+    FRONTEND_URL: str = "http://localhost:5173"
+    EMAILS_FROM_EMAIL: str = "support@personalfinancemanager.in"
+    EMAILS_FROM_NAME: str = "AI Personal Finance Manager"
+    SMTP_HOST: str = "localhost"
+    SMTP_PORT: int = 1025
+
+    # Rate Limiting
+    RATE_LIMIT_LOGIN_MAX: int = 10  # Max per minute
+    RATE_LIMIT_REGISTER_MAX: int = 5  # Max per minute
+
     # External Provider Conventions (Future Phases 7, 8, 10 - not required in Phase 0)
     GROQ_API_KEY: str | None = None
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
