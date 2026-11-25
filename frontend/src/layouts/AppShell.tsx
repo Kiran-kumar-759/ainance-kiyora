@@ -171,7 +171,18 @@ export const AppShell: React.FC<AppShellProps> = ({
           view: 'banking',
           active: currentView === 'banking',
         },
-        { name: 'Analytics', icon: BarChart3, futurePhase: 'Phase 5' },
+        {
+          name: 'Analytics',
+          icon: BarChart3,
+          view: 'analytics',
+          active: currentView === 'analytics',
+        },
+        {
+          name: 'Reports',
+          icon: FileText,
+          view: 'reports',
+          active: currentView === 'reports',
+        },
       ],
     },
     {
@@ -226,7 +237,7 @@ export const AppShell: React.FC<AppShellProps> = ({
               {config.appTitle}
             </span>
             <div className="text-[10px] text-slate-400 font-mono tracking-wider">
-              INDIA SAAS • Phase 3
+              INDIA SAAS • Phase 4
             </div>
           </div>
         </div>

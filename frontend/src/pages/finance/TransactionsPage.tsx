@@ -22,11 +22,17 @@ import {
 } from '../../types/finance';
 import { formatINR, formatDate } from '../../lib/formatters';
 
+import { TransactionNavigationFilters } from '../../types/analytics';
+
 interface TransactionsPageProps {
   onNavigate: (view: string) => void;
+  initialFilters?: TransactionNavigationFilters | null;
 }
 
-export const TransactionsPage: React.FC<TransactionsPageProps> = ({ onNavigate }) => {
+export const TransactionsPage: React.FC<TransactionsPageProps> = ({
+  onNavigate,
+  initialFilters,
+}) => {
   const [transactions, setTransactions] = useState<FinancialTransaction[]>([]);
   const [total, setTotal] = useState<number>(0);
   const [page, setPage] = useState<number>(1);
@@ -39,14 +45,25 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({ onNavigate }
   const [categories, setCategories] = useState<FinancialCategory[]>([]);
 
   // Filters
-  const [accountId, setAccountId] = useState<string>('');
-  const [txType, setTxType] = useState<string>('');
-  const [categoryId, setCategoryId] = useState<string>('');
-  const [source, setSource] = useState<string>('');
+  const [accountId, setAccountId] = useState<string>(initialFilters?.accountId || '');
+  const [txType, setTxType] = useState<string>(initialFilters?.transactionType || '');
+  const [categoryId, setCategoryId] = useState<string>(initialFilters?.categoryId || '');
+  const [source, setSource] = useState<string>(initialFilters?.source || '');
   const [search, setSearch] = useState<string>('');
   const [sortBy, setSortBy] = useState<string>('date_desc');
-  const [startDate, setStartDate] = useState<string>('');
-  const [endDate, setEndDate] = useState<string>('');
+  const [startDate, setStartDate] = useState<string>(initialFilters?.startDate || '');
+  const [endDate, setEndDate] = useState<string>(initialFilters?.endDate || '');
+
+  useEffect(() => {
+    if (!initialFilters) return;
+    setAccountId(initialFilters.accountId || '');
+    setTxType(initialFilters.transactionType || '');
+    setCategoryId(initialFilters.categoryId || '');
+    setSource(initialFilters.source || '');
+    setStartDate(initialFilters.startDate || '');
+    setEndDate(initialFilters.endDate || '');
+    setPage(1);
+  }, [initialFilters]);
 
   // Modals
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);

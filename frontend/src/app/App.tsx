@@ -18,6 +18,9 @@ import { TransactionsPage } from '../pages/finance/TransactionsPage';
 import { TransfersPage } from '../pages/finance/TransfersPage';
 import { BankingPage } from '../pages/banking/BankingPage';
 import { ImportsPage } from '../pages/imports/ImportsPage';
+import { AnalyticsPage } from '../pages/analytics/AnalyticsPage';
+import { ReportsPage } from '../pages/reports/ReportsPage';
+import { TransactionNavigationFilters } from '../types/analytics';
 
 const PROTECTED_VIEWS = new Set([
   'dashboard',
@@ -26,6 +29,8 @@ const PROTECTED_VIEWS = new Set([
   'transfers',
   'banking',
   'imports',
+  'analytics',
+  'reports',
   'profile',
   'preferences',
   'sessions',
@@ -45,9 +50,10 @@ const AppContent: React.FC = () => {
     refresh,
   } = useSystemStatus();
 
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const [currentView, setCurrentView] = useState<string>('foundation');
   const [tokenParam, setTokenParam] = useState<string>('');
+  const [txFilters, setTxFilters] = useState<TransactionNavigationFilters | null>(null);
 
   // When user becomes authenticated and is on foundation, steer to dashboard
   useEffect(() => {
@@ -81,20 +87,23 @@ const AppContent: React.FC = () => {
     }
   }, []);
 
-  const handleNavigate = (view: string) => {
+  const handleNavigate = (view: string, nextTxFilters?: TransactionNavigationFilters) => {
+    if (view === 'transactions') {
+      setTxFilters(nextTxFilters || null);
+    }
     setCurrentView(view);
   };
 
   const renderContent = () => {
     switch (currentView) {
       case 'dashboard':
-        return <DashboardPage onNavigate={handleNavigate} />;
+        return <DashboardPage onNavigate={handleNavigate} userName={user?.full_name} />;
 
       case 'accounts':
         return <AccountsPage onNavigate={handleNavigate} />;
 
       case 'transactions':
-        return <TransactionsPage onNavigate={handleNavigate} />;
+        return <TransactionsPage onNavigate={handleNavigate} initialFilters={txFilters} />;
 
       case 'transfers':
         return <TransfersPage onNavigate={handleNavigate} />;
@@ -104,6 +113,12 @@ const AppContent: React.FC = () => {
 
       case 'imports':
         return <ImportsPage onNavigate={handleNavigate} />;
+
+      case 'analytics':
+        return <AnalyticsPage onNavigate={handleNavigate} />;
+
+      case 'reports':
+        return <ReportsPage onNavigate={handleNavigate} />;
 
       case 'login':
         return <LoginPage onNavigate={handleNavigate} />;

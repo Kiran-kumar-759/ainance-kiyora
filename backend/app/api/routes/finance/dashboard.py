@@ -1,3 +1,5 @@
+import datetime as dt
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
@@ -14,7 +16,9 @@ dashboard_service = DashboardService()
     "", response_model=FinancialDashboardResponse, summary="Get financial dashboard summary"
 )
 def get_dashboard(
-    period: str = Query("this_month", description="this_month, last_month, this_year, all_time"),
+    period: str = Query("this_month", description="this_week, this_month, last_month, last_3_months, last_6_months, this_year, last_year, all_time, custom"),
+    start_date: dt.date | None = Query(None),
+    end_date: dt.date | None = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -22,4 +26,6 @@ def get_dashboard(
     Returns high-level financial summary including total assets, credit card debt,
     net financial position, period income and expenses, and recent transactions.
     """
-    return dashboard_service.get_dashboard_summary(db, current_user, period=period)
+    return dashboard_service.get_dashboard_summary(
+        db, current_user, period=period, start_date=start_date, end_date=end_date
+    )

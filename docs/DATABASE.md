@@ -419,3 +419,17 @@ CREATE INDEX ix_import_mapping_profiles_user_id ON import_mapping_profiles(user_
 -- import_batch_id UUID REFERENCES import_batches(id) ON DELETE SET NULL
 -- import_row_id UUID
 ```
+
+---
+
+## Phase 4 Analytics Query Architecture (No Additional Schema Migration Needed)
+
+Phase 4 runs deterministic SQL aggregations directly against the authoritative tables at Alembic revision **`26be763a8a0a (head)`**, avoiding redundant summary tables or stale balance caches:
+
+- **Composite Time-Range Indexes Utilized:**
+  - `ix_financial_transactions_user_date` (`user_id`, `transaction_date`)
+  - `ix_financial_transactions_user_account_date` (`user_id`, `account_id`, `transaction_date`)
+  - `ix_financial_transactions_category_id` (`category_id`)
+  - `ix_ledger_journals_user_id`, `ix_ledger_entries_account_id`, `ix_ledger_entries_journal_id`
+- **Accounting Isolation:** Analytics queries filter `transfer_id IS NULL`, `transaction_type IN ('income', 'expense')`, `FinancialAccount.status != 'disconnected'`, and exclude solely-reversed `LedgerJournal` entries directly in PostgreSQL.
+- **Historical Balances:** `TrendAnalytics` reconstructs balance curves chronologically from `ledger_entries` joined to unreversed `ledger_journals` (`is_reversed = FALSE`).
