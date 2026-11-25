@@ -177,20 +177,76 @@ def get_ocr_provider() -> OcrProvider:
         return _CACHED_PROVIDER
 
 
+def merge_ocr_lines_by_row(items: list[OcrLineItem]) -> list[OcrLineItem]:
+    """
+    Groups fragmented horizontal bounding boxes (e.g. Dish | Qty | Amnt columns or
+    Label | Value pairs) onto the same visual text row sorted left-to-right.
+    """
+    if not items:
+        return []
+
+    boxed: list[tuple[float, float, float, OcrLineItem]] = []
+    unboxed: list[OcrLineItem] = []
+    for it in items:
+        if it.bbox and len(it.bbox) >= 4:
+            xs = [p[0] for p in it.bbox]
+            ys = [p[1] for p in it.bbox]
+            y_mid = (min(ys) + max(ys)) / 2.0
+            h = max(8.0, max(ys) - min(ys))
+            x_left = min(xs)
+            boxed.append((y_mid, h, x_left, it))
+        else:
+            unboxed.append(it)
+
+    if not boxed:
+        return items
+
+    boxed.sort(key=lambda r: (r[0], r[2]))
+    rows: list[list[tuple[float, float, float, OcrLineItem]]] = []
+    for entry in boxed:
+        y_mid, h, _x, _it = entry
+        if not rows:
+            rows.append([entry])
+            continue
+        prev_row = rows[-1]
+        row_y = sum(r[0] for r in prev_row) / len(prev_row)
+        row_h = max(r[1] for r in prev_row)
+        tol = max(12.0, 0.55 * min(h, row_h))
+        if abs(y_mid - row_y) <= tol:
+            prev_row.append(entry)
+        else:
+            rows.append([entry])
+
+    merged_out: list[OcrLineItem] = []
+    for row in rows:
+        row.sort(key=lambda r: r[2])
+        if len(row) == 1:
+            merged_out.append(row[0][3])
+            continue
+        joined_text = "   ".join(r[3].text.strip() for r in row if r[3].text.strip())
+        avg_conf = sum(r[3].confidence for r in row) / len(row)
+        all_pts = [pt for r in row for pt in (r[3].bbox or [])]
+        merged_out.append(
+            OcrLineItem(text=joined_text, confidence=round(avg_conf, 4), bbox=all_pts)
+        )
+    merged_out.extend(unboxed)
+    return merged_out
+
+
 def preprocess_image_for_ocr(image_bgr: np.ndarray) -> np.ndarray:
     """
-    Applies OpenCV preprocessing suited for printed & phone-captured Indian bills:
-    - Upscale small images so thin digits (GSTIN / decimal totals) remain crisp
+    Applies OpenCV preprocessing suited for thermal receipts, printed bills & phone captures:
+    - Upscale low-res images cleanly so dot-matrix & small digits remain crisp
     - CLAHE luminance contrast enhancement
-    - Mild bilateral/Gaussian denoising preserving sharp glyph edges
+    - Mild unsharp mask edge enhancement (without over-blurring thin digits like '1' or '*')
     """
     if image_bgr is None or image_bgr.size == 0:
         raise ValueError("Empty image buffer passed to OCR preprocessor.")
 
     h, w = image_bgr.shape[:2]
     max_dim = max(h, w)
-    if max_dim < 900:
-        scale = min(2.0, 1200.0 / max(1, max_dim))
+    if max_dim < 1000:
+        scale = min(2.5, 1400.0 / max(1, max_dim))
         image_bgr = cv2.resize(
             image_bgr,
             (int(w * scale), int(h * scale)),
@@ -206,11 +262,12 @@ def preprocess_image_for_ocr(image_bgr: np.ndarray) -> np.ndarray:
 
     lab = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2LAB)
     l_chan, a_chan, b_chan = cv2.split(lab)
-    clahe = cv2.createCLAHE(clipLimit=1.8, tileGridSize=(8, 8))
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     enhanced_l = clahe.apply(l_chan)
     merged = cv2.merge((enhanced_l, a_chan, b_chan))
     bgr = cv2.cvtColor(merged, cv2.COLOR_LAB2BGR)
-    return cv2.fastNlMeansDenoisingColored(bgr, None, 3, 3, 7, 21)
+    blurred = cv2.GaussianBlur(bgr, (0, 0), sigmaX=1.2)
+    return cv2.addWeighted(bgr, 1.35, blurred, -0.35, 0)
 
 
 def _decode_image_bytes_to_bgr(data: bytes) -> np.ndarray:
@@ -295,7 +352,7 @@ def extract_document_text(
                     pix = page.get_pixmap(matrix=pymupdf.Matrix(200 / 72.0, 200 / 72.0), alpha=False)
                     bgr = _decode_image_bytes_to_bgr(pix.tobytes("png"))
                     pre = preprocess_image_for_ocr(bgr)
-                    lines = ocr.recognize_image_array(pre)
+                    lines = merge_ocr_lines_by_row(ocr.recognize_image_array(pre))
                     text_joined = "\n".join(ln.text for ln in lines)
                     avg_c = (
                         sum(ln.confidence for ln in lines) / len(lines) if lines else 0.0
@@ -322,7 +379,7 @@ def extract_document_text(
     else:
         bgr = _decode_image_bytes_to_bgr(data)
         pre = preprocess_image_for_ocr(bgr)
-        lines = ocr.recognize_image_array(pre)
+        lines = merge_ocr_lines_by_row(ocr.recognize_image_array(pre))
         text_joined = "\n".join(ln.text for ln in lines)
         avg_c = sum(ln.confidence for ln in lines) / len(lines) if lines else 0.0
         pages_out.append(

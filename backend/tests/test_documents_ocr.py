@@ -371,6 +371,51 @@ def test_real_ocr_pipeline_gst_extraction_validation_retry_and_human_confirmatio
     assert len(parsed_conflict.validation_errors) >= 1  # invalid date 31/02/2026
     assert any("differs from Grand Total" in w for w in parsed_conflict.validation_warnings)
 
+    # 3b. Multi-column bounding-box row merging & dot-matrix POS receipt parsing
+    from app.services.documents.ocr_engine import merge_ocr_lines_by_row
+
+    pos_boxes = [
+        OcrLineItem("Cashier :RAM", 0.98, [[30, 2], [240, 2], [240, 40], [30, 40]]),
+        OcrLineItem("Dish", 0.99, [[30, 130], [110, 130], [110, 170], [30, 170]]),
+        OcrLineItem("Qty", 0.75, [[460, 128], [530, 128], [530, 170], [460, 170]]),
+        OcrLineItem("Amnt", 0.99, [[610, 129], [690, 129], [690, 170], [610, 170]]),
+        OcrLineItem("Lahori Murgh Tandoori F", 0.99, [[31, 214], [420, 214], [420, 258], [31, 258]]),
+        OcrLineItem("1案", 0.85, [[455, 214], [520, 214], [520, 258], [455, 258]]),
+        OcrLineItem("180.00", 0.99, [[570, 212], [680, 212], [680, 254], [570, 254]]),
+        OcrLineItem("-Assorted Veg Platter", 0.97, [[5, 343], [370, 343], [370, 385], [5, 385]]),
+        OcrLineItem("2.米", 0.89, [[456, 343], [521, 343], [521, 386], [456, 386]]),
+        OcrLineItem("500.00.", 0.99, [[571, 343], [695, 343], [695, 385], [571, 385]]),
+        OcrLineItem("680.00", 0.99, [[574, 488], [700, 488], [700, 530], [574, 530]]),
+        OcrLineItem("Service Charge @10.00 : +", 0.92, [[148, 533], [571, 533], [571, 567], [148, 567]]),
+        OcrLineItem("68.00", 0.97, [[588, 530], [701, 530], [701, 567], [588, 567]]),
+    ]
+    merged_pos = merge_ocr_lines_by_row(pos_boxes)
+    parsed_pos = parse_ocr_output(
+        OcrDocumentOutput(
+            engine_name="rapidocr_paddleocr",
+            engine_version="test",
+            full_text="\n".join(x.text for x in merged_pos),
+            pages=[
+                OcrPageOutput(
+                    page_number=1,
+                    text="\n".join(x.text for x in merged_pos),
+                    lines=merged_pos,
+                    used_ocr=True,
+                    average_confidence=0.94,
+                )
+            ],
+            total_pages=1,
+            processed_pages=1,
+            warnings=[],
+            average_confidence=0.94,
+        )
+    )
+    assert parsed_pos.merchant_name is None
+    assert len(parsed_pos.line_items) == 2
+    assert parsed_pos.subtotal == Decimal("680.00")
+    assert parsed_pos.total_tax == Decimal("68.00")
+    assert parsed_pos.grand_total == Decimal("748.00")
+
     # 4. Full PostgreSQL OCR Job -> Needs Review -> Edit -> Confirm -> Unpaid Bill & Ledger Transaction
     pdf_bytes = _make_multipage_gst_invoice_pdf()
     up = tc.post(

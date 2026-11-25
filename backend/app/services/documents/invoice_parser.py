@@ -307,10 +307,16 @@ def parse_ocr_output(ocr_doc: OcrDocumentOutput) -> ParsedInvoiceResult:
     if not res.merchant_name:
         for ln, conf in lines_with_conf[:8]:
             low = ln.lower().strip(" :-")
+            if re.search(r"\b(?:dish|particulars|qty|0ty|amnt|unit\s*price)\b", low):
+                break
             if (
                 low in GENERIC_HEADER_TERMS
                 or GSTIN_REGEX.search(ln)
-                or re.match(r"^(?:invoice|bill|receipt|date|gst|ph|tel|to|customer)", low)
+                or re.match(
+                    r"^(?:invoice|bill|receipt|date|gst|ph|tel|to|customer|cashier|waiter|server|covers|table|order|kot|dish|item|qty|0ty|amnt|amount|description|sl\.?\s*no|tax|service)",
+                    low,
+                )
+                or re.search(r"\d+\.\d{2}\s*\.?\s*$", ln)
                 or re.fullmatch(r"[\d\W]+", ln)
             ):
                 continue
@@ -429,7 +435,10 @@ def parse_ocr_output(ocr_doc: OcrDocumentOutput) -> ParsedInvoiceResult:
         res.field_confidence["igst"] = igst_c
 
     ttax_v, ttax_c = _match_line_amount(
-        [rf"(?:total\s*tax|total\s*gst|gst\s*amount)\s*[:\-]?\s*{MONEY_NUM_RE}(?!\s*%)"]
+        [
+            rf"(?:total\s*tax|total\s*gst|gst\s*amount)\s*[:\-]?\s*{MONEY_NUM_RE}(?!\s*%)",
+            rf"(?:service\s*charge|service\s*tax|s\.?\s*charge)\b.*?(?::|\+|\-)\s*{MONEY_NUM_RE}(?!\s*%)",
+        ]
     )
     if ttax_v is not None:
         res.total_tax = ttax_v
@@ -467,27 +476,38 @@ def parse_ocr_output(ocr_doc: OcrDocumentOutput) -> ParsedInvoiceResult:
         res.outstanding_amount = due_v
         res.field_confidence["outstanding_amount"] = due_c
 
-    # Extract simple tabular line items safely
+    # Extract tabular line items safely (supports dot-matrix POS receipts + GST invoices)
+    summary_ignore_re = re.compile(
+        r"(?:sub[\-\s]?total|grand\s*total|cgst|sgst|igst|total\s*tax|total\s*gst|taxable|amount\s*paid|balance|gstin|service\s*charge|service\s*tax|covers|cashier|round\s*off|discount|net\s*amount)",
+        re.IGNORECASE,
+    )
     for ln, _conf in lines_with_conf:
-        if re.search(
-            r"(?:sub[\-\s]?total|grand\s*total|cgst|sgst|igst|total\s*tax|taxable|amount\s*paid|balance|gstin)",
-            ln,
-            re.IGNORECASE,
-        ):
+        clean_ln = ln.strip().rstrip(".")
+        if summary_ignore_re.search(clean_ln):
             continue
-        # Match: "Description   2   150.00   300.00" or "Description   ₹499.00"
-        m_full = re.match(
-            r"^([A-Za-z][A-Za-z0-9\s\-/&().]{2,70}?)\s+(\d+(?:\.\d{1,2})?)\s+(?:₹|Rs\.?)?\s*([0-9,]+\.\d{2})\s+(?:₹|Rs\.?)?\s*([0-9,]+\.\d{2})\s*$",
-            ln,
+        if re.match(r"^(?:dish|item|qty|0ty|amnt|amount|particulars|description)\b", clean_ln, re.IGNORECASE):
+            continue
+
+        # Normalize OCR dot-matrix quantity noise glyphs (e.g. '1案', '2米', '2.米', '4#', '5*')
+        norm_ln = re.sub(
+            r"(\s\d+(?:\.\d{1,2})?)\s*(?:[*#x×\.]|[^\x00-\x7f])+\s+",
+            r"\1   ",
+            clean_ln,
         )
-        if m_full:
-            qty = _to_decimal(m_full.group(2))
-            unit_p = _to_decimal(m_full.group(3))
-            tot_p = _to_decimal(m_full.group(4))
+
+        # 1. Match 4 columns: "Description   Qty   UnitPrice   Total"
+        m_4col = re.match(
+            r"^[-\s]*([A-Za-z][A-Za-z0-9\s\-/&().]{2,70}?)\s+(\d+(?:\.\d{1,2})?)\s+(?:₹|Rs\.?)?\s*([0-9,]+\.\d{2})\s+(?:₹|Rs\.?)?\s*([0-9,]+\.\d{2})\s*$",
+            norm_ln,
+        )
+        if m_4col:
+            qty = _to_decimal(m_4col.group(2))
+            unit_p = _to_decimal(m_4col.group(3))
+            tot_p = _to_decimal(m_4col.group(4))
             if tot_p is not None:
                 res.line_items.append(
                     {
-                        "description": m_full.group(1).strip(),
+                        "description": m_4col.group(1).strip(" -"),
                         "quantity": str(qty) if qty is not None else None,
                         "unit_price": str(unit_p) if unit_p is not None else None,
                         "total": str(tot_p),
@@ -495,16 +515,37 @@ def parse_ocr_output(ocr_doc: OcrDocumentOutput) -> ParsedInvoiceResult:
                 )
             continue
 
-        m_simple = re.match(
-            r"^([A-Za-z][A-Za-z0-9\s\-/&().]{3,70}?)\s+(?:₹|Rs\.?|INR)\s*([0-9][0-9,]*\.\d{2})\s*$",
-            ln,
+        # 2. Match 3 columns: "Description   Qty   Total"
+        m_3col = re.match(
+            r"^[-\s]*([A-Za-z][A-Za-z0-9\s\-/&().]{2,70}?)\s+(\d+(?:\.\d{1,2})?)\s+(?:₹|Rs\.?|INR)?\s*([0-9,]+\.\d{2})\s*$",
+            norm_ln,
         )
-        if m_simple:
+        if m_3col:
+            qty = _to_decimal(m_3col.group(2))
+            tot_p = _to_decimal(m_3col.group(3))
+            if tot_p is not None and qty is not None and qty > 0:
+                unit_p = (tot_p / qty).quantize(Decimal("0.01"))
+                res.line_items.append(
+                    {
+                        "description": m_3col.group(1).strip(" -"),
+                        "quantity": str(qty),
+                        "unit_price": str(unit_p),
+                        "total": str(tot_p),
+                    }
+                )
+            continue
+
+        # 3. Match 2 columns: "Description   ₹499.00" or "Description   180.00"
+        m_simple = re.match(
+            r"^[-\s]*([A-Za-z][A-Za-z0-9\s\-/&().]{2,70}?)\s+(?:₹|Rs\.?|INR)?\s*([0-9][0-9,]*\.\d{2})\s*$",
+            clean_ln,
+        )
+        if m_simple and not re.match(r"^(?:total|net|paid|due)\b", m_simple.group(1), re.IGNORECASE):
             tot_p = _to_decimal(m_simple.group(2))
             if tot_p is not None:
                 res.line_items.append(
                     {
-                        "description": m_simple.group(1).strip(),
+                        "description": m_simple.group(1).strip(" -"),
                         "quantity": "1.00",
                         "unit_price": str(tot_p),
                         "total": str(tot_p),
@@ -512,7 +553,31 @@ def parse_ocr_output(ocr_doc: OcrDocumentOutput) -> ParsedInvoiceResult:
                 )
 
     if res.line_items:
-        res.field_confidence["line_items"] = 0.80
+        res.field_confidence["line_items"] = 0.82
+        items_sum = sum(
+            (Decimal(str(it["total"])) for it in res.line_items if it.get("total") is not None),
+            Decimal("0.00"),
+        ).quantize(Decimal("0.01"))
+        if res.subtotal is None and items_sum > Decimal("0.00"):
+            # Look for matching standalone subtotal line near bottom of table
+            for ln, conf in lines_with_conf:
+                m_solo = re.fullmatch(r"\s*(?:₹|Rs\.?|INR)?\s*([0-9][0-9,]*\.\d{2})\.?\s*", ln)
+                if m_solo:
+                    cand = _to_decimal(m_solo.group(1))
+                    if cand is not None and abs(cand - items_sum) <= Decimal("1.00"):
+                        res.subtotal = cand
+                        res.field_confidence["subtotal"] = round(conf * 0.9, 3)
+                        break
+            if res.subtotal is None and len(res.line_items) >= 2:
+                res.subtotal = items_sum
+                res.field_confidence["subtotal"] = 0.78
+
+    if res.grand_total is None and res.subtotal is not None and res.total_tax is not None:
+        res.grand_total = (res.subtotal + res.total_tax).quantize(Decimal("0.01"))
+        res.field_confidence["grand_total"] = 0.72
+        res.validation_warnings.append(
+            f"Grand Total (₹{res.grand_total}) calculated from Subtotal + Tax/Charges because final total line was not detected — please verify."
+        )
 
     # Overall confidence average
     if res.field_confidence:

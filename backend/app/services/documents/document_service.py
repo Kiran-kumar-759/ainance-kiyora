@@ -8,7 +8,6 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.models.bills import Bill
 from app.models.documents import (
     DocumentExtraction,
     DocumentLink,
@@ -16,9 +15,6 @@ from app.models.documents import (
     DocumentReviewEvent,
     FinancialDocument,
 )
-from app.models.finance import FinancialTransaction
-from app.models.loans import Loan
-from app.models.subscriptions import Subscription
 from app.models.user import User
 from app.repositories.bills.bill_repository import BillRepository
 from app.repositories.documents.document_repository import DocumentRepository
@@ -50,7 +46,10 @@ from app.services.documents.doc_storage import (
     PrivateDocumentStorage,
     validate_uploaded_document,
 )
-from app.services.documents.invoice_parser import ParsedInvoiceResult, validate_extraction_consistency
+from app.services.documents.invoice_parser import (
+    ParsedInvoiceResult,
+    validate_extraction_consistency,
+)
 from app.services.documents.ocr_engine import render_document_preview_png
 from app.services.finance.transaction_service import TransactionService
 

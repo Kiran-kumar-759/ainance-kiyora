@@ -343,6 +343,36 @@ export const OcrReviewModal: React.FC<OcrReviewModalProps> = ({
     }
   };
 
+  const handleRerunOcr = async () => {
+    if (!doc || busy) return;
+    setBusy(true);
+    setError(null);
+    setBanner('Re-running OCR extraction...');
+    try {
+      await documentsApi.processDocument(doc.id);
+      for (let i = 0; i < 15; i += 1) {
+        await new Promise((r) => setTimeout(r, 800));
+        const latest = await documentsApi.getDocument(doc.id);
+        if (latest.ocr_status === 'completed' || latest.ocr_status === 'failed') {
+          setDoc(latest);
+          populateForm(latest);
+          setBanner(
+            latest.ocr_status === 'completed'
+              ? 'OCR extraction refreshed cleanly.'
+              : 'OCR extraction failed. Check processing history.'
+          );
+          onUpdated();
+          return;
+        }
+      }
+      setBanner('OCR job is still running in the background. Click Refresh shortly.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to re-run OCR.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/60 backdrop-blur-xs">
       <div className="bg-white rounded-2xl w-full max-w-6xl h-[92vh] flex flex-col shadow-2xl overflow-hidden text-xs">
@@ -366,6 +396,15 @@ export const OcrReviewModal: React.FC<OcrReviewModalProps> = ({
             </div>
           </div>
           <div className="flex items-center space-x-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={handleRerunOcr}
+              className="px-2.5 py-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg hover:bg-indigo-100 inline-flex items-center space-x-1 font-semibold disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${busy ? 'animate-spin' : ''}`} />
+              <span>Re-run OCR</span>
+            </button>
             <button
               type="button"
               onClick={handleDownload}
