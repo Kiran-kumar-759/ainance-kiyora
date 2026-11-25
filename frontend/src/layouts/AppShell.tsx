@@ -177,7 +177,12 @@ export const AppShell: React.FC<AppShellProps> = ({
     {
       title: 'Money Management',
       items: [
-        { name: 'Imports', icon: FileSpreadsheet, futurePhase: 'Phase 4' },
+        {
+          name: 'Imports',
+          icon: FileSpreadsheet,
+          view: 'imports',
+          active: currentView === 'imports',
+        },
         { name: 'Budgets', icon: PieChart, futurePhase: 'Phase 6' },
         { name: 'Savings Goals', icon: Target, futurePhase: 'Phase 6' },
       ],
@@ -221,7 +226,7 @@ export const AppShell: React.FC<AppShellProps> = ({
               {config.appTitle}
             </span>
             <div className="text-[10px] text-slate-400 font-mono tracking-wider">
-              INDIA SAAS • Phase 2
+              INDIA SAAS • Phase 3
             </div>
           </div>
         </div>

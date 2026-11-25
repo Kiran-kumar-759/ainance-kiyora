@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.routes import auth, onboarding, system, users
+from app.api.routes import auth, imports, onboarding, system, users
 from app.api.routes.banking import connections
 from app.api.routes.finance import (
     accounts,
@@ -23,3 +23,4 @@ api_router.include_router(transactions.router)
 api_router.include_router(transfers.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(connections.router)
+api_router.include_router(imports.router)

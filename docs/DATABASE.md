@@ -336,4 +336,86 @@ CREATE TABLE banking_sync_runs (
 );
 CREATE INDEX ix_banking_sync_runs_connection_id ON banking_sync_runs(connection_id);
 CREATE INDEX ix_banking_sync_runs_user_id ON banking_sync_runs(user_id);
+
+-- Phase 3: Bank Statement Import Batches
+CREATE TABLE import_batches (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    account_id UUID NOT NULL REFERENCES financial_accounts(id) ON DELETE RESTRICT,
+    original_filename VARCHAR(255) NOT NULL,
+    file_hash VARCHAR(64) NOT NULL,
+    file_size INTEGER NOT NULL,
+    file_type VARCHAR(10) NOT NULL, -- csv, xlsx
+    storage_key VARCHAR(500),
+    status VARCHAR(30) NOT NULL DEFAULT 'uploaded',
+    sheet_name VARCHAR(100),
+    header_row_index INTEGER NOT NULL DEFAULT 0,
+    delimiter VARCHAR(5),
+    total_rows INTEGER NOT NULL DEFAULT 0,
+    valid_rows INTEGER NOT NULL DEFAULT 0,
+    invalid_rows INTEGER NOT NULL DEFAULT 0,
+    needs_review_rows INTEGER NOT NULL DEFAULT 0,
+    duplicate_rows INTEGER NOT NULL DEFAULT 0,
+    potential_duplicate_rows INTEGER NOT NULL DEFAULT 0,
+    imported_rows INTEGER NOT NULL DEFAULT 0,
+    skipped_rows INTEGER NOT NULL DEFAULT 0,
+    total_income NUMERIC(19, 2) NOT NULL DEFAULT 0.00,
+    total_expenses NUMERIC(19, 2) NOT NULL DEFAULT 0.00,
+    mapping_configuration JSON,
+    inspection_metadata JSON,
+    lifecycle_history JSON NOT NULL DEFAULT '[]',
+    failure_reason TEXT,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMP WITH TIME ZONE
+);
+CREATE INDEX ix_import_batches_user_created ON import_batches(user_id, created_at);
+CREATE INDEX ix_import_batches_user_account_hash ON import_batches(user_id, account_id, file_hash);
+
+-- Phase 3: Normalized Statement Import Rows
+CREATE TABLE import_rows (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    import_batch_id UUID NOT NULL REFERENCES import_batches(id) ON DELETE CASCADE,
+    source_row_number INTEGER NOT NULL,
+    raw_row_data JSON NOT NULL,
+    normalized_date DATE,
+    normalized_description VARCHAR(255),
+    normalized_merchant VARCHAR(150),
+    normalized_notes TEXT,
+    normalized_amount NUMERIC(19, 2),
+    normalized_type VARCHAR(20), -- income, expense
+    currency VARCHAR(3) NOT NULL DEFAULT 'INR',
+    transaction_reference VARCHAR(100),
+    running_balance NUMERIC(19, 2),
+    row_fingerprint VARCHAR(64),
+    validation_status VARCHAR(30) NOT NULL DEFAULT 'valid',
+    duplicate_status VARCHAR(40) NOT NULL DEFAULT 'none',
+    duplicate_match_transaction_id UUID,
+    duplicate_match_row_id UUID,
+    validation_errors JSON NOT NULL DEFAULT '[]',
+    category_id UUID REFERENCES financial_categories(id) ON DELETE SET NULL,
+    is_selected BOOLEAN NOT NULL DEFAULT FALSE,
+    review_changes JSON,
+    imported_transaction_id UUID REFERENCES financial_transactions(id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+CREATE INDEX ix_import_rows_batch_status ON import_rows(import_batch_id, validation_status);
+CREATE INDEX ix_import_rows_batch_row_num ON import_rows(import_batch_id, source_row_number);
+
+-- Phase 3: Saved Per-User Column Mapping Profiles
+CREATE TABLE import_mapping_profiles (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    profile_name VARCHAR(100) NOT NULL,
+    file_format VARCHAR(10) NOT NULL, -- csv, xlsx
+    mapping_configuration JSON NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+CREATE INDEX ix_import_mapping_profiles_user_id ON import_mapping_profiles(user_id);
+
+-- Phase 3 additions to financial_transactions:
+-- import_batch_id UUID REFERENCES import_batches(id) ON DELETE SET NULL
+-- import_row_id UUID
 ```

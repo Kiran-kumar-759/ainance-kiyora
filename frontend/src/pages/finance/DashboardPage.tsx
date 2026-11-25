@@ -272,6 +272,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
         </button>
 
         <button
+          onClick={() => onNavigate('imports')}
+          className="inline-flex items-center space-x-2 px-4 py-2 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded-lg text-sm font-medium shadow-sm transition-colors"
+        >
+          <Landmark className="w-4 h-4 text-purple-600" />
+          <span>Import Statement</span>
+        </button>
+
+        <button
           onClick={() => onNavigate('banking')}
           className="inline-flex items-center space-x-2 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-sm font-medium transition-colors"
         >
@@ -377,6 +385,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                     className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700"
                   >
                     + Record Transaction
+                  </button>
+                  <button
+                    onClick={() => onNavigate('imports')}
+                    className="px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-medium hover:bg-indigo-100"
+                  >
+                    Upload Bank Statement
                   </button>
                   <button
                     onClick={() => onNavigate('banking')}

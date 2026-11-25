@@ -15,6 +15,7 @@ from app.models.finance import (
     LedgerEntry,
     LedgerJournal,
 )
+from app.models.imports import ImportBatch, ImportMappingProfile, ImportRow
 from app.models.system import SystemSetting
 from app.models.user import User
 
@@ -34,4 +35,7 @@ __all__ = [
     "LedgerEntry",
     "BankingConnection",
     "BankingSyncRun",
+    "ImportBatch",
+    "ImportRow",
+    "ImportMappingProfile",
 ]

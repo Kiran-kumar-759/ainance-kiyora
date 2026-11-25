@@ -17,6 +17,7 @@ import { AccountsPage } from '../pages/finance/AccountsPage';
 import { TransactionsPage } from '../pages/finance/TransactionsPage';
 import { TransfersPage } from '../pages/finance/TransfersPage';
 import { BankingPage } from '../pages/banking/BankingPage';
+import { ImportsPage } from '../pages/imports/ImportsPage';
 
 const PROTECTED_VIEWS = new Set([
   'dashboard',
@@ -24,6 +25,7 @@ const PROTECTED_VIEWS = new Set([
   'transactions',
   'transfers',
   'banking',
+  'imports',
   'profile',
   'preferences',
   'sessions',
@@ -99,6 +101,9 @@ const AppContent: React.FC = () => {
 
       case 'banking':
         return <BankingPage onNavigate={handleNavigate} />;
+
+      case 'imports':
+        return <ImportsPage onNavigate={handleNavigate} />;
 
       case 'login':
         return <LoginPage onNavigate={handleNavigate} />;

@@ -234,8 +234,15 @@ class FinancialTransaction(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     source: Mapped[str] = mapped_column(
         String(30), default="manual", nullable=False
-    )  # manual, demo_bank
+    )  # manual, demo_bank, csv_import, xlsx_import
     external_reference: Mapped[str | None] = mapped_column(String(100), index=True, nullable=True)
+    import_batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("import_batches.id", ondelete="SET NULL"),
+        index=True,
+        nullable=True,
+    )
+    import_row_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, index=True, nullable=True)
     transfer_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid,
         ForeignKey("financial_transfers.id", ondelete="CASCADE"),

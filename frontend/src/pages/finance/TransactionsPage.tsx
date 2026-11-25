@@ -383,6 +383,8 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({ onNavigate }
               <option value="">All Sources</option>
               <option value="manual">Manual Entry</option>
               <option value="demo_bank">Demo Bank</option>
+              <option value="csv_import">CSV Import</option>
+              <option value="xlsx_import">XLSX Import</option>
             </select>
           </div>
 
@@ -509,6 +511,10 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({ onNavigate }
                       {tx.source === 'demo_bank' ? (
                         <span className="px-2 py-0.5 bg-purple-50 text-purple-700 text-[10px] font-bold rounded-full border border-purple-200">
                           Demo Bank
+                        </span>
+                      ) : tx.source === 'csv_import' || tx.source === 'xlsx_import' ? (
+                        <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-bold rounded-full border border-blue-200 uppercase">
+                          {tx.source === 'csv_import' ? 'CSV Import' : 'XLSX Import'}
                         </span>
                       ) : (
                         <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-[10px] font-medium rounded-full">

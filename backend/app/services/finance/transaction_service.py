@@ -48,6 +48,8 @@ class TransactionService:
             notes=tx.notes,
             source=tx.source,
             external_reference=tx.external_reference,
+            import_batch_id=tx.import_batch_id,
+            import_row_id=tx.import_row_id,
             transfer_id=tx.transfer_id,
             created_at=tx.created_at,
             updated_at=tx.updated_at,
@@ -60,6 +62,8 @@ class TransactionService:
         req: TransactionCreateRequest,
         source: str = "manual",
         external_reference: str | None = None,
+        import_batch_id: uuid.UUID | None = None,
+        import_row_id: uuid.UUID | None = None,
         commit: bool = True,
     ) -> TransactionResponse:
         # Verify account ownership and active status
@@ -114,6 +118,8 @@ class TransactionService:
                 notes=req.notes.strip() if req.notes else None,
                 source=source,
                 external_reference=external_reference,
+                import_batch_id=import_batch_id,
+                import_row_id=import_row_id,
             )
             self.transaction_repo.create(db, tx)
 

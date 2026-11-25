@@ -73,6 +73,12 @@ class Settings(BaseSettings):
     RATE_LIMIT_LOGIN_MAX: int = 10  # Max per minute
     RATE_LIMIT_REGISTER_MAX: int = 5  # Max per minute
 
+    # Bank Statement Imports & Private Storage (Phase 3)
+    IMPORT_STORAGE_DIR: str = "uploads/statements"
+    IMPORT_MAX_FILE_SIZE_BYTES: int = 10 * 1024 * 1024  # 10 MB
+    IMPORT_MAX_ROWS_PER_FILE: int = 5000
+    IMPORT_FILE_RETENTION_DAYS: int = 30
+
     # External Provider Conventions (Future Phases 7, 8, 10 - not required in Phase 0)
     GROQ_API_KEY: str | None = None
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
