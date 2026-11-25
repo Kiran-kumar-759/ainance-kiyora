@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { AssistantPage } from '../pages/assistant/AssistantPage';
 import { assistantApi } from '../services/assistantApi';
+import { billsApi } from '../services/billsApi';
 import { financeApi } from '../services/financeApi';
 
 vi.mock('../services/assistantApi', () => ({
@@ -27,6 +28,12 @@ vi.mock('../services/financeApi', () => ({
     listAccounts: vi.fn(),
     listCategories: vi.fn(),
     createTransaction: vi.fn(),
+  },
+}));
+
+vi.mock('../services/billsApi', () => ({
+  billsApi: {
+    createBill: vi.fn(),
   },
 }));
 
@@ -348,5 +355,63 @@ describe('AssistantPage (Phase 10)', () => {
     });
 
     vi.unstubAllGlobals();
+  });
+
+  it('renders inline Bill Draft confirmation card and creates bill only when user clicks Confirm & Add Bill', async () => {
+    const convWithBillDraft = {
+      ...sampleConversation,
+      messages: [
+        {
+          id: 'm-bill-1',
+          conversation_id: 'conv-1',
+          role: 'assistant' as const,
+          content: "I've prepared an Electricity Bill draft for ₹1200.00.",
+          web_search_used: false,
+          tools_invoked: ['action_draft_parser'],
+          citations: [],
+          evidence_items: [],
+          draft_action: {
+            action_type: 'create_bill' as const,
+            bill_name: 'Electricity Bill',
+            bill_category: 'electricity',
+            bill_type: 'one_time' as const,
+            expected_amount: '1200.00',
+            currency: 'INR',
+            due_date: '2026-12-02',
+            requires_user_confirmation: true,
+          },
+          status: 'completed',
+          created_at: '2026-11-25T10:05:00Z',
+        },
+      ],
+    };
+    vi.mocked(assistantApi.getConversation).mockResolvedValue(convWithBillDraft);
+    vi.mocked(billsApi.createBill).mockResolvedValue({
+      id: 'bill-created-1',
+      bill_name: 'Electricity Bill',
+    } as never);
+
+    render(<AssistantPage onNavigate={mockNavigate} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Confirm & Add Bill/i })).toBeInTheDocument();
+    });
+
+    expect(billsApi.createBill).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: /Confirm & Add Bill/i }));
+
+    await waitFor(() => {
+      expect(billsApi.createBill).toHaveBeenCalledWith(
+        expect.objectContaining({
+          bill_name: 'Electricity Bill',
+          bill_category: 'electricity',
+          expected_amount: '1200.00',
+          due_date: '2026-12-02',
+        })
+      );
+    });
+
+    expect(screen.getByRole('button', { name: /Open Bills →/i })).toBeInTheDocument();
   });
 });

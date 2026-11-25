@@ -16,6 +16,7 @@ from app.services.assistant.finance_tools import (
     tool_get_upcoming_commitments,
 )
 from app.services.assistant.rag_service import retrieve_personal_documents
+from app.services.assistant.voice_service import try_parse_chat_action_draft
 from app.services.web_research.research_service import WebResearchService
 from app.services.web_research.source_validation import sanitize_untrusted_text
 
@@ -352,6 +353,40 @@ def run_assistant_turn(
     Orchestrate read-only finance tools, tenant-scoped RAG, optional single-provider web research,
     and Groq grounded synthesis with strict citation & prompt-injection guardrails.
     """
+    draft_action = try_parse_chat_action_draft(db, user, query)
+    if draft_action is not None:
+        if draft_action["action_type"] == "create_bill":
+            amt_txt = (
+                f"₹{draft_action['expected_amount']}"
+                if draft_action.get("expected_amount")
+                else "an unspecified amount"
+            )
+            msg = (
+                f"I've prepared a **{draft_action['bill_name']}** draft for **{amt_txt}** due **{draft_action['due_date']}**.\n\n"
+                "For financial safety, nothing is added to your Bills ledger automatically — review the prefilled card below and click **Confirm & Add Bill** to save it."
+            )
+        else:
+            amt_txt = (
+                f"₹{draft_action['amount']}"
+                if draft_action.get("amount")
+                else "an unspecified amount"
+            )
+            msg = (
+                f"I've prepared a **{draft_action['transaction_type']}** transaction draft for **{amt_txt}** on **{draft_action['transaction_date']}**.\n\n"
+                "For financial safety, nothing is recorded automatically — review the card below and click **Confirm & Save Expense**."
+            )
+        return {
+            "content": msg,
+            "provider_used": None,
+            "llm_model": "action_draft_parser",
+            "web_search_used": False,
+            "tools_invoked": ["action_draft_parser"],
+            "citations": [],
+            "evidence_items": [],
+            "draft_action": draft_action,
+            "error_message": None,
+        }
+
     intents = _detect_intents(query, include_personal_context, web_search_enabled)
     tools_invoked: list[str] = []
     tool_outputs: dict[str, Any] = {}

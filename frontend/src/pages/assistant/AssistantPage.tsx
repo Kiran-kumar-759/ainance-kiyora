@@ -22,11 +22,14 @@ import {
   X,
 } from 'lucide-react';
 import { assistantApi } from '../../services/assistantApi';
+import { billsApi } from '../../services/billsApi';
 import { financeApi } from '../../services/financeApi';
 import {
   AiConversationDetail,
   AiConversationSummary,
   AiMessage,
+  ChatBillDraftAction,
+  ChatTransactionDraftAction,
   EvidenceItem,
   UserAiPreference,
   VoiceExpenseDraft,
@@ -365,6 +368,27 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
   const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
   const [categories, setCategories] = useState<FinancialCategory[]>([]);
   const [savingDraft, setSavingDraft] = useState<boolean>(false);
+
+  // Inline chat draft confirmation states (Bills / Transactions from chat)
+  const [billDraftEdits, setBillDraftEdits] = useState<
+    Record<
+      string,
+      {
+        bill_name: string;
+        bill_category: string;
+        provider_name: string;
+        expected_amount: string;
+        due_date: string;
+        bill_type: 'one_time' | 'recurring';
+        frequency: 'weekly' | 'monthly' | 'quarterly' | 'half_yearly' | 'yearly' | 'custom';
+      }
+    >
+  >({});
+  const [savingMsgDraftId, setSavingMsgDraftId] = useState<string | null>(null);
+  const [confirmedMsgDrafts, setConfirmedMsgDrafts] = useState<
+    Record<string, { kind: 'bill' | 'transaction'; label: string }>
+  >({});
+  const [activeDraftMessageId, setActiveDraftMessageId] = useState<string | null>(null);
 
   const mediaRecorderSupported = useMemo(
     () =>
@@ -975,12 +999,267 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
       });
       setVoiceDraft(null);
       setInputText('');
+      if (activeDraftMessageId) {
+        setConfirmedMsgDrafts((prev) => ({
+          ...prev,
+          [activeDraftMessageId]: {
+            kind: 'transaction',
+            label: `${draftDescription.trim() || 'Transaction'} (₹${draftAmount}) saved`,
+          },
+        }));
+        setActiveDraftMessageId(null);
+      }
       setStatusNotice('Confirmed transaction saved to your financial ledger.');
     } catch (err) {
       setError((err as Error)?.message || 'Unable to save confirmed transaction.');
     } finally {
       setSavingDraft(false);
     }
+  };
+
+  const handleConfirmChatBillDraft = async (msgId: string, base: ChatBillDraftAction) => {
+    const edited = billDraftEdits[msgId];
+    const billName = (edited?.bill_name ?? base.bill_name ?? '').trim();
+    const billCategory = edited?.bill_category ?? base.bill_category ?? 'other';
+    const providerName = (edited?.provider_name ?? base.provider_name ?? '').trim();
+    const amt = edited?.expected_amount ?? (base.expected_amount != null ? String(base.expected_amount) : '');
+    const dueDate = edited?.due_date ?? base.due_date;
+    const billType = edited?.bill_type ?? base.bill_type ?? 'one_time';
+    const freq = edited?.frequency ?? base.frequency ?? 'monthly';
+
+    if (!billName || !amt || Number(amt) <= 0 || !dueDate) {
+      setError('Please provide a valid bill name, positive amount, and due date before adding the bill.');
+      return;
+    }
+
+    setSavingMsgDraftId(msgId);
+    setError(null);
+    try {
+      const created = await billsApi.createBill({
+        bill_name: billName,
+        bill_category: billCategory,
+        provider_name: providerName || null,
+        bill_type: billType,
+        frequency: billType === 'recurring' ? freq : null,
+        is_variable_amount: false,
+        expected_amount: Number(amt).toFixed(2),
+        current_amount: Number(amt).toFixed(2),
+        currency: 'INR',
+        due_date: dueDate,
+        description: base.description || `Added via AI Assistant: ${billName}`,
+        reminder_enabled: true,
+      });
+      setConfirmedMsgDrafts((prev) => ({
+        ...prev,
+        [msgId]: {
+          kind: 'bill',
+          label: `${created.bill_name} (₹${amt}, due ${dueDate})`,
+        },
+      }));
+      setStatusNotice(`Bill "${created.bill_name}" added cleanly to Bills.`);
+    } catch (err) {
+      setError((err as Error)?.message || 'Failed to add bill to Bills.');
+    } finally {
+      setSavingMsgDraftId(null);
+    }
+  };
+
+  const handleOpenChatTransactionDraft = async (
+    msgId: string,
+    draft: ChatTransactionDraftAction
+  ) => {
+    setError(null);
+    try {
+      const [acctList, catList] = await Promise.all([
+        accounts.length > 0 ? Promise.resolve(accounts) : financeApi.listAccounts(),
+        categories.length > 0 ? Promise.resolve(categories) : financeApi.listCategories(),
+      ]);
+      setAccounts(acctList);
+      setCategories(catList);
+      setActiveDraftMessageId(msgId);
+      setVoiceDraft({
+        transcript: draft.transcript,
+        transaction_type: draft.transaction_type || 'expense',
+        amount: draft.amount ?? null,
+        currency: draft.currency || 'INR',
+        category_id: draft.category_id ?? null,
+        category_name: draft.category_name ?? null,
+        account_id: draft.account_id ?? null,
+        account_name: draft.account_name ?? null,
+        description: draft.description ?? null,
+        merchant_payee: draft.merchant_payee ?? null,
+        transaction_date: draft.transaction_date,
+        missing_fields: draft.missing_fields || [],
+        requires_user_confirmation: true,
+      });
+      setDraftType(draft.transaction_type || 'expense');
+      setDraftAmount(draft.amount != null ? String(draft.amount) : '');
+      setDraftAccountId(draft.account_id || acctList[0]?.id || '');
+      setDraftCategoryId(draft.category_id || '');
+      setDraftDescription(draft.description || draft.transcript || '');
+      setDraftMerchant(draft.merchant_payee || '');
+      setDraftDate(draft.transaction_date);
+    } catch (err) {
+      setError((err as Error)?.message || 'Unable to load accounts and categories for confirmation.');
+    }
+  };
+
+  const renderDraftActionCard = (msg: AiMessage) => {
+    if (!msg.draft_action || typeof msg.draft_action !== 'object') return null;
+    const actionType = (msg.draft_action as { action_type?: string }).action_type;
+    const confirmed = confirmedMsgDrafts[msg.id];
+
+    if (confirmed) {
+      return (
+        <div className="mt-3 p-3 rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-900 text-xs flex items-center justify-between gap-2">
+          <div className="flex items-center space-x-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>
+              <strong>Saved:</strong> {confirmed.label}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => onNavigate(confirmed.kind === 'bill' ? 'bills' : 'transactions')}
+            className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shrink-0"
+          >
+            Open {confirmed.kind === 'bill' ? 'Bills' : 'Transactions'} →
+          </button>
+        </div>
+      );
+    }
+
+    if (actionType === 'create_bill') {
+      const base = msg.draft_action as ChatBillDraftAction;
+      const formVal = billDraftEdits[msg.id] || {
+        bill_name: base.bill_name || '',
+        bill_category: base.bill_category || 'electricity',
+        provider_name: base.provider_name || '',
+        expected_amount: base.expected_amount != null ? String(base.expected_amount) : '',
+        due_date: base.due_date || '',
+        bill_type: base.bill_type || 'one_time',
+        frequency: base.frequency || 'monthly',
+      };
+      const updateField = (patch: Partial<typeof formVal>) => {
+        setBillDraftEdits((prev) => ({
+          ...prev,
+          [msg.id]: { ...formVal, ...patch },
+        }));
+      };
+      const isSaving = savingMsgDraftId === msg.id;
+
+      return (
+        <div className="mt-3 p-3.5 rounded-xl border border-indigo-200 bg-white text-xs space-y-3 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="font-semibold text-indigo-900">
+              Pending Bill Draft (Review &amp; Confirm to add to Bills)
+            </span>
+            <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 text-[11px]">
+              Not saved yet
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+            <label className="block space-y-1">
+              <span className="text-slate-600 font-medium">Bill Name</span>
+              <input
+                type="text"
+                value={formVal.bill_name}
+                onChange={(e) => updateField({ bill_name: e.target.value })}
+                className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-slate-900"
+              />
+            </label>
+
+            <label className="block space-y-1">
+              <span className="text-slate-600 font-medium">Amount (INR)</span>
+              <input
+                type="number"
+                step="0.01"
+                min="0.01"
+                value={formVal.expected_amount}
+                onChange={(e) => updateField({ expected_amount: e.target.value })}
+                className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-slate-900"
+              />
+            </label>
+
+            <label className="block space-y-1">
+              <span className="text-slate-600 font-medium">Due Date</span>
+              <input
+                type="date"
+                value={formVal.due_date}
+                onChange={(e) => updateField({ due_date: e.target.value })}
+                className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-slate-900"
+              />
+            </label>
+
+            <label className="block space-y-1">
+              <span className="text-slate-600 font-medium">Category</span>
+              <select
+                value={formVal.bill_category}
+                onChange={(e) => updateField({ bill_category: e.target.value })}
+                className="w-full rounded-lg border border-slate-300 px-2 py-1.5 bg-white text-slate-900"
+              >
+                <option value="electricity">Electricity</option>
+                <option value="water">Water</option>
+                <option value="gas">Gas</option>
+                <option value="internet">Internet / Broadband</option>
+                <option value="mobile_postpaid">Mobile Postpaid</option>
+                <option value="mobile_recharge">Mobile Recharge</option>
+                <option value="rent">Rent</option>
+                <option value="insurance">Insurance</option>
+                <option value="loan_emi">Loan EMI</option>
+                <option value="credit_card">Credit Card</option>
+                <option value="maintenance">Maintenance</option>
+                <option value="other">Other</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => onNavigate('bills')}
+              className="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 font-medium"
+            >
+              Open Bills Page
+            </button>
+            <button
+              type="button"
+              disabled={isSaving}
+              onClick={() => handleConfirmChatBillDraft(msg.id, base)}
+              className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-semibold"
+            >
+              {isSaving ? 'Adding Bill...' : 'Confirm & Add Bill'}
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    if (actionType === 'create_transaction') {
+      const txDraft = msg.draft_action as ChatTransactionDraftAction;
+      return (
+        <div className="mt-3 p-3 rounded-xl border border-indigo-200 bg-white text-xs flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <span className="font-semibold text-indigo-900">
+              Pending Transaction Draft ({txDraft.transaction_type}: ₹{txDraft.amount ?? '—'})
+            </span>
+            <p className="text-slate-600 mt-0.5">
+              Select account &amp; confirm to record this in your ledger.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleOpenChatTransactionDraft(msg.id, txDraft)}
+            className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+          >
+            Review &amp; Save Expense
+          </button>
+        </div>
+      );
+    }
+
+    return null;
   };
 
   const renderEvidenceSection = (msg: AiMessage) => {
@@ -1509,6 +1788,8 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
                             setOpenEvidenceMsgIds((prev) => ({ ...prev, [msg.id]: true }));
                             setHighlightedCitationKey(`${msg.id}:${citNum}`);
                           })}
+
+                          {renderDraftActionCard(msg)}
 
                           {renderEvidenceSection(msg)}
                         </>

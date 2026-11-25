@@ -50,6 +50,40 @@ export interface EvidenceItem {
   meta: Record<string, unknown>;
 }
 
+export interface ChatBillDraftAction {
+  action_type: 'create_bill';
+  bill_name: string;
+  bill_category: string;
+  provider_name?: string | null;
+  bill_type: 'one_time' | 'recurring';
+  frequency?: 'weekly' | 'monthly' | 'quarterly' | 'half_yearly' | 'yearly' | 'custom' | null;
+  expected_amount?: string | number | null;
+  currency: string;
+  due_date: string;
+  description?: string | null;
+  missing_fields?: string[];
+  requires_user_confirmation: boolean;
+}
+
+export interface ChatTransactionDraftAction {
+  action_type: 'create_transaction';
+  transcript: string;
+  transaction_type: 'expense' | 'income';
+  amount?: string | number | null;
+  currency: string;
+  category_id?: string | null;
+  category_name?: string | null;
+  account_id?: string | null;
+  account_name?: string | null;
+  description?: string | null;
+  merchant_payee?: string | null;
+  transaction_date: string;
+  missing_fields?: string[];
+  requires_user_confirmation: boolean;
+}
+
+export type ChatDraftAction = ChatBillDraftAction | ChatTransactionDraftAction | Record<string, unknown>;
+
 export interface AiMessage {
   id: string;
   conversation_id: string;
@@ -61,7 +95,7 @@ export interface AiMessage {
   tools_invoked: string[];
   citations: CitationItem[];
   evidence_items: EvidenceItem[];
-  draft_action?: Record<string, unknown> | null;
+  draft_action?: ChatDraftAction | null;
   status: string;
   error_message?: string | null;
   created_at: string;

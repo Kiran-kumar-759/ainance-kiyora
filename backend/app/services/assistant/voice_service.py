@@ -153,6 +153,174 @@ def parse_voice_expense_transcript(
     )
 
 
+_BILL_CATEGORY_KEYWORDS: list[tuple[str, tuple[str, ...]]] = [
+    ("electricity", ("electricity", "electric", "power bill", "bescom", "mahadiscom", "tata power", "eb bill")),
+    ("water", ("water", "jal board", "bwssb")),
+    ("gas", ("gas", "piped gas", "lpg", "cylinder", "indane", "hp gas", "bharat gas")),
+    ("internet", ("internet", "broadband", "wifi", "wi-fi", "fiber", "airtel xstream", "jiofiber", "act fibernet")),
+    ("mobile_postpaid", ("postpaid", "mobile bill", "phone bill")),
+    ("mobile_recharge", ("recharge", "prepaid")),
+    ("rent", ("rent", "house rent", "pg rent", "lease")),
+    ("insurance", ("insurance", "lic", "health policy", "car insurance")),
+    ("loan_emi", ("emi", "loan payment", "home loan", "car loan")),
+    ("credit_card", ("credit card", "card bill")),
+    ("maintenance", ("maintenance", "society", "hoa")),
+]
+
+_ACTION_CREATE_VERBS = re.compile(
+    r"\b(?:add|create|log|record|schedule|set\s+up|remind(?:\s+me)?\s+to\s+pay|paid|spent)\b",
+    re.I,
+)
+
+
+def _extract_relative_date(text: str, today: dt.date) -> tuple[dt.date, bool]:
+    lower = text.lower()
+    if "today" in lower:
+        return today, True
+    if "tomorrow" in lower:
+        return today + dt.timedelta(days=1), True
+    if "yesterday" in lower:
+        return today - dt.timedelta(days=1), True
+    if "next week" in lower:
+        return today + dt.timedelta(days=7), True
+    if "next month" in lower:
+        return today + dt.timedelta(days=30), True
+    m_days = re.search(r"\bin\s+(\d{1,3})\s+days?\b", lower)
+    if m_days:
+        return today + dt.timedelta(days=min(int(m_days.group(1)), 365)), True
+    m_weeks = re.search(r"\bin\s+(\d{1,2})\s+weeks?\b", lower)
+    if m_weeks:
+        return today + dt.timedelta(days=min(int(m_weeks.group(1)) * 7, 365)), True
+    m_iso = re.search(r"\b(20\d{2}-\d{2}-\d{2})\b", lower)
+    if m_iso:
+        try:
+            return dt.date.fromisoformat(m_iso.group(1)), True
+        except ValueError:
+            pass
+    return today + dt.timedelta(days=7), False
+
+
+def _extract_amount(text: str) -> Decimal | None:
+    m = _AMOUNT_RE.search(text)
+    if m:
+        raw_num = (m.group(1) or m.group(2) or "").replace(",", "")
+        try:
+            cand = Decimal(raw_num)
+            if cand > Decimal("0"):
+                return cand.quantize(Decimal("0.01"))
+        except InvalidOperation:
+            pass
+    m2 = _FALLBACK_NUM_RE.search(text)
+    if m2:
+        try:
+            cand = Decimal(m2.group(1))
+            if cand > Decimal("0"):
+                return cand.quantize(Decimal("0.01"))
+        except InvalidOperation:
+            pass
+    return None
+
+
+def try_parse_chat_action_draft(
+    db: Session, user: User, message: str
+) -> dict | None:
+    """
+    Detect explicit user requests in chat to create a Bill or Expense/Income Transaction,
+    returning a structured confirmation-required `draft_action` dict without mutating DB state.
+    """
+    text = (message or "").strip()
+    lower = text.lower()
+    if not text or not _ACTION_CREATE_VERBS.search(lower):
+        return None
+
+    # Ignore analytical/question prompts like "How much did I spend..." or "Should I add..."
+    if text.endswith("?") or re.match(r"^(?:how|what|why|when|should|can\s+you\s+explain)\b", lower):
+        return None
+
+    fc_repo = ForecastRepository()
+    tz = fc_repo.get_user_timezone(db, user.id)
+    today = resolve_user_today(tz)
+
+    is_bill_intent = bool(
+        re.search(r"\b(?:bill|due|electricity|water\s+bill|gas\s+bill|internet\s+bill|broadband|wifi\s+bill|postpaid|rent\s+due|remind\s+me\s+to\s+pay)\b", lower)
+    )
+    if is_bill_intent and not re.search(r"\b(?:spent|paid)\b", lower):
+        amount = _extract_amount(text)
+        due_date, _ = _extract_relative_date(text, today)
+
+        bill_category = "other"
+        for cat, kws in _BILL_CATEGORY_KEYWORDS:
+            if any(k in lower for k in kws):
+                bill_category = cat
+                break
+
+        cat_titles = {
+            "electricity": "Electricity Bill",
+            "water": "Water Bill",
+            "gas": "Gas Bill",
+            "internet": "Internet / Broadband Bill",
+            "mobile_postpaid": "Mobile Postpaid Bill",
+            "mobile_recharge": "Mobile Recharge",
+            "rent": "Rent Bill",
+            "insurance": "Insurance Premium",
+            "loan_emi": "Loan EMI",
+            "credit_card": "Credit Card Bill",
+            "maintenance": "Maintenance Bill",
+            "other": "Utility / Scheduled Bill",
+        }
+        bill_name = cat_titles[bill_category]
+        bill_type = "recurring" if any(k in lower for k in ("every month", "monthly", "recurring", "weekly", "yearly")) else "one_time"
+        frequency = None
+        if bill_type == "recurring":
+            if "weekly" in lower:
+                frequency = "weekly"
+            elif "yearly" in lower or "annual" in lower:
+                frequency = "yearly"
+            else:
+                frequency = "monthly"
+
+        missing: list[str] = []
+        if amount is None:
+            missing.append("expected_amount")
+
+        return {
+            "action_type": "create_bill",
+            "bill_name": bill_name,
+            "bill_category": bill_category,
+            "provider_name": None,
+            "bill_type": bill_type,
+            "frequency": frequency,
+            "expected_amount": str(amount) if amount is not None else None,
+            "currency": "INR",
+            "due_date": due_date.isoformat(),
+            "description": text[:240],
+            "missing_fields": missing,
+            "requires_user_confirmation": True,
+        }
+
+    # Otherwise check explicit expense/income entry command
+    if re.search(r"\b(?:spent|paid|add\s+(?:an?\s+)?(?:expense|income|transaction)|log\s+(?:an?\s+)?(?:expense|income)|record\s+(?:an?\s+)?(?:expense|income))\b", lower):
+        tx_draft = parse_voice_expense_transcript(db, user, text)
+        return {
+            "action_type": "create_transaction",
+            "transcript": tx_draft.transcript,
+            "transaction_type": tx_draft.transaction_type,
+            "amount": str(tx_draft.amount) if tx_draft.amount is not None else None,
+            "currency": tx_draft.currency,
+            "category_id": str(tx_draft.category_id) if tx_draft.category_id else None,
+            "category_name": tx_draft.category_name,
+            "account_id": str(tx_draft.account_id) if tx_draft.account_id else None,
+            "account_name": tx_draft.account_name,
+            "description": tx_draft.description,
+            "merchant_payee": tx_draft.merchant_payee,
+            "transaction_date": tx_draft.transaction_date.isoformat(),
+            "missing_fields": tx_draft.missing_fields,
+            "requires_user_confirmation": True,
+        }
+
+    return None
+
+
 _MAX_AUDIO_BYTES = 8 * 1024 * 1024  # 8 MB cap
 
 

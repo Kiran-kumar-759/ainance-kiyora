@@ -11,6 +11,7 @@ from app.core.rate_limit import rate_limiter
 from app.db.session import get_db
 from app.main import create_application
 from app.models.assistant import AiConversation, AiMessage, DocumentRagChunk, UserAiPreference
+from app.models.bills import Bill, BillReminder, Notification
 from app.models.finance import (
     FinancialAccount,
     FinancialCategory,
@@ -58,6 +59,9 @@ def assistant_api_client() -> Generator[tuple[TestClient, list[str]], None, None
                 cleanup_db.execute(delete(AiConversation).where(AiConversation.user_id.in_(uids)))
                 cleanup_db.execute(delete(UserAiPreference).where(UserAiPreference.user_id.in_(uids)))
                 cleanup_db.execute(delete(DocumentRagChunk).where(DocumentRagChunk.user_id.in_(uids)))
+                cleanup_db.execute(delete(Notification).where(Notification.user_id.in_(uids)))
+                cleanup_db.execute(delete(BillReminder).where(BillReminder.user_id.in_(uids)))
+                cleanup_db.execute(delete(Bill).where(Bill.user_id.in_(uids)))
                 cleanup_db.execute(
                     delete(LedgerEntry).where(
                         LedgerEntry.journal_id.in_(
@@ -420,3 +424,57 @@ def test_voice_transcribe_and_speak_endpoints(assistant_api_client, monkeypatch)
     assert stt_on.status_code == 200, stt_on.text
     assert stt_on.json()["transcript"] == "Spent 450 rupees on Swiggy lunch"
     assert stt_on.json()["provider"] == "groq:whisper-large-v3-turbo"
+
+
+def test_chat_bill_action_draft_and_no_unconfirmed_bill_write(assistant_api_client):
+    tc, created_emails = assistant_api_client
+    csrf = _register_and_login(tc, created_emails, "bill_chat")
+
+    conv = tc.post(
+        "/api/v1/assistant/conversations",
+        json={"title": "Bill Commands", "web_search_enabled": True},
+        headers={"X-CSRF-Token": csrf},
+    ).json()
+
+    bills_before = tc.get("/api/v1/bills").json()["total"]
+
+    res = tc.post(
+        f"/api/v1/assistant/conversations/{conv['id']}/messages",
+        json={
+            "content": "Add an electricity bill of 1,200 rupees due next week",
+            "web_search_enabled": True,
+            "web_provider": "tavily",
+        },
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["web_search_used"] is False
+    draft = body["draft_action"]
+    assert draft is not None
+    assert draft["action_type"] == "create_bill"
+    assert draft["bill_category"] == "electricity"
+    assert Decimal(str(draft["expected_amount"])) == Decimal("1200.00")
+    assert draft["requires_user_confirmation"] is True
+
+    # Must NOT write to Bills automatically until user clicks Confirm & Add Bill
+    bills_after = tc.get("/api/v1/bills").json()["total"]
+    assert bills_after == bills_before
+
+    # Confirming with the parsed payload writes cleanly to Bills
+    create_res = tc.post(
+        "/api/v1/bills",
+        json={
+            "bill_name": draft["bill_name"],
+            "bill_category": draft["bill_category"],
+            "bill_type": draft["bill_type"],
+            "is_variable_amount": False,
+            "expected_amount": draft["expected_amount"],
+            "current_amount": draft["expected_amount"],
+            "currency": "INR",
+            "due_date": draft["due_date"],
+        },
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert create_res.status_code in (200, 201), create_res.text
+    assert tc.get("/api/v1/bills").json()["total"] == bills_before + 1

@@ -200,6 +200,7 @@ class AssistantService:
             tools_invoked=result["tools_invoked"],
             citations=result["citations"],
             evidence_items=result["evidence_items"],
+            draft_action=result.get("draft_action"),
             status="completed",
             error_message=result["error_message"],
         )
