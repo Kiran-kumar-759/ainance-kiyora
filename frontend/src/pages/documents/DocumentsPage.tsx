@@ -92,8 +92,8 @@ export const DocumentsPage: React.FC<DocumentsPageProps> = () => {
   const [banner, setBanner] = useState<string | null>(null);
   const [reviewDocId, setReviewDocId] = useState<string | null>(null);
 
-  const loadAll = async () => {
-    setLoading(true);
+  const loadAll = async (silent: boolean = false) => {
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const effectiveStatus = tab === 'review' ? 'needs_review' : statusFilter || undefined;
@@ -123,10 +123,29 @@ export const DocumentsPage: React.FC<DocumentsPageProps> = () => {
       setSyncHistory(syncRes);
       setCandidates(candRes);
       setSmsStatus(smsRes);
+
+      // Keep recently uploaded batch statuses in sync automatically once OCR completes
+      const byId = new Map(listRes.items.map((d) => [d.id, d]));
+      setUploadResults((prev) =>
+        prev.map((item) => {
+          const found = item.id ? byId.get(item.id) : undefined;
+          if (!found) return item;
+          if (found.processing_status === 'needs_review') {
+            return {
+              ...item,
+              message: `OCR ready (${found.merchant_name || 'Review fields'})`,
+            };
+          }
+          if (found.processing_status === 'failed') {
+            return { ...item, status: 'error', message: 'OCR extraction failed' };
+          }
+          return item;
+        })
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load documents workspace.');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -134,6 +153,19 @@ export const DocumentsPage: React.FC<DocumentsPageProps> = () => {
     void loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, page, catFilter, statusFilter]);
+
+  // Automatically poll silently while any uploaded document is queued or processing OCR
+  useEffect(() => {
+    const hasPending =
+      (overview?.processing_count || 0) > 0 ||
+      docs.some((d) => d.processing_status === 'queued' || d.processing_status === 'processing');
+    if (!hasPending) return;
+    const timer = window.setTimeout(() => {
+      void loadAll(true);
+    }, 1200);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [overview?.processing_count, docs]);
 
   const handleFilesSelected = async (files: FileList | File[]) => {
     const arr = Array.from(files);

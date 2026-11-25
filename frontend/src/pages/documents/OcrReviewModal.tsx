@@ -159,6 +159,26 @@ export const OcrReviewModal: React.FC<OcrReviewModalProps> = ({
       .finally(() => setLoading(false));
   }, [documentId]);
 
+  // Auto-poll if user opens the review modal right after upload while OCR is still queued/processing
+  useEffect(() => {
+    if (!documentId || !doc) return;
+    if (doc.ocr_status !== 'queued' && doc.ocr_status !== 'processing') return;
+    const timer = window.setTimeout(() => {
+      documentsApi
+        .getDocument(documentId)
+        .then((latest) => {
+          setDoc(latest);
+          if (latest.ocr_status === 'completed' || latest.ocr_status === 'failed') {
+            populateForm(latest);
+            onUpdated();
+          }
+        })
+        .catch(() => {});
+    }, 800);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [documentId, doc?.ocr_status]);
+
   useEffect(() => {
     if (!documentId) return;
     let revokedUrl: string | null = null;
@@ -520,6 +540,12 @@ export const OcrReviewModal: React.FC<OcrReviewModalProps> = ({
                 <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 flex items-center space-x-2">
                   <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
                   <span>{banner}</span>
+                </div>
+              )}
+              {(doc?.ocr_status === 'queued' || doc?.ocr_status === 'processing') && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-800 flex items-center space-x-2">
+                  <RefreshCw className="w-4 h-4 animate-spin flex-shrink-0" />
+                  <span>Local OCR is extracting fields from this document... fields will appear automatically.</span>
                 </div>
               )}
 
