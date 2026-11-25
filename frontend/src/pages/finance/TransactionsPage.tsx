@@ -402,6 +402,7 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
               <option value="demo_bank">Demo Bank</option>
               <option value="csv_import">CSV Import</option>
               <option value="xlsx_import">XLSX Import</option>
+              <option value="bill_payment">Bill Payment</option>
             </select>
           </div>
 

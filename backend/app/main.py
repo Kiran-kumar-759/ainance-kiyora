@@ -10,6 +10,7 @@ from app.api.routes import health
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.db.session import check_db_readiness, engine
+from app.services.bills.scheduler import reminder_scheduler
 
 # Initialize logging
 setup_logging(debug=settings.DEBUG)
@@ -33,7 +34,9 @@ async def lifespan(app: FastAPI):
             "Initial PostgreSQL readiness check failed: %s (will retry on readiness probes)",
             db_check.get("error"),
         )
+    reminder_scheduler.start()
     yield
+    await reminder_scheduler.stop()
     logger.info("Shutting down %s...", settings.APP_NAME)
     engine.dispose()
     logger.info("Database engine connections closed.")

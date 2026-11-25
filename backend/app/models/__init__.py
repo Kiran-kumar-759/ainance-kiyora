@@ -5,6 +5,14 @@ from app.models.auth import (
     UserPreference,
     UserSession,
 )
+from app.models.bills import (
+    Bill,
+    BillDocument,
+    BillPayment,
+    BillRecurrenceSchedule,
+    BillReminder,
+    Notification,
+)
 from app.models.finance import (
     BankingConnection,
     BankingSyncRun,
@@ -38,4 +46,10 @@ __all__ = [
     "ImportBatch",
     "ImportRow",
     "ImportMappingProfile",
+    "Bill",
+    "BillRecurrenceSchedule",
+    "BillPayment",
+    "BillReminder",
+    "BillDocument",
+    "Notification",
 ]

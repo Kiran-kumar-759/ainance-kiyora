@@ -18,7 +18,10 @@ export interface UserPreferences {
     email_alerts?: boolean;
     bill_reminders?: boolean;
     monthly_summary?: boolean;
-    [key: string]: boolean | undefined;
+    email_reminders_enabled?: boolean;
+    sms_reminders_enabled?: boolean;
+    phone_number?: string;
+    [key: string]: string | boolean | undefined;
   };
 }
 

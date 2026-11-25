@@ -16,6 +16,15 @@ export const PreferencesPage: React.FC<PreferencesPageProps> = () => {
   const [emailAlerts, setEmailAlerts] = useState(preferences?.notification_preferences?.email_alerts ?? true);
   const [billReminders, setBillReminders] = useState(preferences?.notification_preferences?.bill_reminders ?? true);
   const [monthlySummary, setMonthlySummary] = useState(preferences?.notification_preferences?.monthly_summary ?? true);
+  const [emailRemindersEnabled, setEmailRemindersEnabled] = useState(
+    Boolean(preferences?.notification_preferences?.email_reminders_enabled ?? true)
+  );
+  const [smsRemindersEnabled, setSmsRemindersEnabled] = useState(
+    Boolean(preferences?.notification_preferences?.sms_reminders_enabled ?? false)
+  );
+  const [phoneNumber, setPhoneNumber] = useState(
+    String(preferences?.notification_preferences?.phone_number || '')
+  );
 
   const [isSaving, setIsSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -30,6 +39,13 @@ export const PreferencesPage: React.FC<PreferencesPageProps> = () => {
         setEmailAlerts(preferences.notification_preferences.email_alerts ?? true);
         setBillReminders(preferences.notification_preferences.bill_reminders ?? true);
         setMonthlySummary(preferences.notification_preferences.monthly_summary ?? true);
+        setEmailRemindersEnabled(
+          Boolean(preferences.notification_preferences.email_reminders_enabled ?? true)
+        );
+        setSmsRemindersEnabled(
+          Boolean(preferences.notification_preferences.sms_reminders_enabled ?? false)
+        );
+        setPhoneNumber(String(preferences.notification_preferences.phone_number || ''));
       }
     }
   }, [preferences]);
@@ -49,6 +65,9 @@ export const PreferencesPage: React.FC<PreferencesPageProps> = () => {
           email_alerts: emailAlerts,
           bill_reminders: billReminders,
           monthly_summary: monthlySummary,
+          email_reminders_enabled: emailRemindersEnabled,
+          sms_reminders_enabled: smsRemindersEnabled,
+          phone_number: phoneNumber.trim() || undefined,
         },
       };
 
@@ -210,6 +229,46 @@ export const PreferencesPage: React.FC<PreferencesPageProps> = () => {
                 className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
               />
             </label>
+
+            <label className="flex items-center justify-between p-3 border border-slate-200 rounded-xl hover:bg-slate-50 cursor-pointer">
+              <div>
+                <div className="text-xs font-semibold text-slate-800">Email Bill Reminders</div>
+                <div className="text-[11px] text-slate-500">Allow due-date reminder emails when SMTP is configured</div>
+              </div>
+              <input
+                type="checkbox"
+                checked={emailRemindersEnabled}
+                onChange={(e) => setEmailRemindersEnabled(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+              />
+            </label>
+
+            <div className="p-3 border border-slate-200 rounded-xl space-y-2">
+              <label className="flex items-center justify-between cursor-pointer">
+                <div>
+                  <div className="text-xs font-semibold text-slate-800">SMS Bill Reminders (Opt-In)</div>
+                  <div className="text-[11px] text-slate-500">Requires Indian mobile number and configured SMS provider</div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={smsRemindersEnabled}
+                  onChange={(e) => setSmsRemindersEnabled(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                />
+              </label>
+              <div>
+                <label className="block text-[11px] font-medium text-slate-700 mb-1">
+                  Mobile Number (+91XXXXXXXXXX)
+                </label>
+                <input
+                  type="tel"
+                  placeholder="+919876543210"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg"
+                />
+              </div>
+            </div>
           </div>
         </div>
 

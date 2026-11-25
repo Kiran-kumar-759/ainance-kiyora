@@ -6,7 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 TransactionType = Literal["income", "expense", "transfer"]
-TransactionSource = Literal["manual", "demo_bank", "csv_import", "xlsx_import"]
+TransactionSource = Literal["manual", "demo_bank", "csv_import", "xlsx_import", "bill_payment"]
 
 
 class TransactionCreateRequest(BaseModel):

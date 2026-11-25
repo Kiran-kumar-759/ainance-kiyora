@@ -79,6 +79,21 @@ class Settings(BaseSettings):
     IMPORT_MAX_ROWS_PER_FILE: int = 5000
     IMPORT_FILE_RETENTION_DAYS: int = 30
 
+    # Bills, Payments, Reminders & Private Document Storage (Phase 5)
+    BILL_DUE_SOON_DAYS: int = 5
+    BILL_STORAGE_DIR: str = "uploads/bills"
+    BILL_MAX_DOC_SIZE_BYTES: int = 10 * 1024 * 1024  # 10 MB
+    REMINDER_SCHEDULER_ENABLED: bool = True
+    REMINDER_SCHEDULER_INTERVAL_SECONDS: int = 60
+    REMINDER_DEFAULT_HOUR_IST: int = 9
+
+    # SMS Provider Adapter Settings (Phase 5 - optional external credentials)
+    SMS_ENABLED: bool = False
+    SMS_PROVIDER: str = "none"  # none, webhook
+    SMS_API_KEY: str | None = None
+    SMS_SENDER_ID: str | None = None
+    SMS_WEBHOOK_URL: str | None = None
+
     # External Provider Conventions (Future Phases 7, 8, 10 - not required in Phase 0)
     GROQ_API_KEY: str | None = None
     GROQ_MODEL: str = "llama-3.3-70b-versatile"

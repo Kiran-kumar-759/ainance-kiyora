@@ -433,3 +433,146 @@ Phase 4 runs deterministic SQL aggregations directly against the authoritative t
   - `ix_ledger_journals_user_id`, `ix_ledger_entries_account_id`, `ix_ledger_entries_journal_id`
 - **Accounting Isolation:** Analytics queries filter `transfer_id IS NULL`, `transaction_type IN ('income', 'expense')`, `FinancialAccount.status != 'disconnected'`, and exclude solely-reversed `LedgerJournal` entries directly in PostgreSQL.
 - **Historical Balances:** `TrendAnalytics` reconstructs balance curves chronologically from `ledger_entries` joined to unreversed `ledger_journals` (`is_reversed = FALSE`).
+
+---
+
+## Phase 5: Bills, Payments, Recurring Schedules, Reminders & Notifications Schema
+
+Added in Alembic revision **`0fd42a428400_create_bills_payments_reminders_and_.py`** (`down_revision = '26be763a8a0a'`):
+
+```sql
+-- 1. Recurring Bill Schedule Templates
+CREATE TABLE bill_recurrence_schedules (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    bill_name VARCHAR(150) NOT NULL,
+    bill_category VARCHAR(40) NOT NULL,
+    provider_name VARCHAR(150),
+    account_reference VARCHAR(100),
+    description TEXT,
+    financial_category_id UUID REFERENCES financial_categories(id) ON DELETE SET NULL,
+    linked_account_id UUID REFERENCES financial_accounts(id) ON DELETE SET NULL,
+    preferred_payment_method VARCHAR(30),
+    frequency VARCHAR(20) NOT NULL, -- weekly, monthly, quarterly, half_yearly, yearly, custom
+    custom_interval_days INTEGER,
+    anchor_day INTEGER NOT NULL,
+    is_variable_amount BOOLEAN NOT NULL DEFAULT FALSE,
+    expected_amount NUMERIC(19, 2),
+    currency VARCHAR(3) NOT NULL DEFAULT 'INR',
+    start_date DATE NOT NULL,
+    end_date DATE,
+    next_due_date DATE NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    reminder_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    reminder_days_before JSON NOT NULL DEFAULT '[7,3,1,0]',
+    notification_channels JSON NOT NULL DEFAULT '{"in_app":true,"email":false,"sms":false}',
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+-- 2. Bills (One-Time & Generated Recurring Occurrences)
+CREATE TABLE bills (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    parent_schedule_id UUID REFERENCES bill_recurrence_schedules(id) ON DELETE SET NULL,
+    financial_category_id UUID REFERENCES financial_categories(id) ON DELETE SET NULL,
+    linked_account_id UUID REFERENCES financial_accounts(id) ON DELETE SET NULL,
+    bill_name VARCHAR(150) NOT NULL,
+    bill_category VARCHAR(40) NOT NULL,
+    provider_name VARCHAR(150),
+    account_reference VARCHAR(100),
+    description TEXT,
+    bill_type VARCHAR(20) NOT NULL, -- one_time, recurring
+    frequency VARCHAR(20),
+    is_variable_amount BOOLEAN NOT NULL DEFAULT FALSE,
+    expected_amount NUMERIC(19, 2),
+    current_amount NUMERIC(19, 2),
+    amount_paid_total NUMERIC(19, 2) NOT NULL DEFAULT 0.00,
+    currency VARCHAR(3) NOT NULL DEFAULT 'INR',
+    billing_period_start DATE,
+    billing_period_end DATE,
+    due_date DATE NOT NULL,
+    paid_at TIMESTAMP WITH TIME ZONE,
+    stored_status VARCHAR(20) NOT NULL DEFAULT 'unpaid', -- unpaid, partially_paid, paid, archived
+    preferred_payment_method VARCHAR(30),
+    reminder_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    reminder_days_before JSON NOT NULL DEFAULT '[7,3,1,0]',
+    notification_channels JSON NOT NULL DEFAULT '{"in_app":true,"email":false,"sms":false}',
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+-- Partial unique index preventing duplicate active occurrences per schedule & due date:
+CREATE UNIQUE INDEX uq_bills_schedule_due_date ON bills(parent_schedule_id, due_date)
+    WHERE parent_schedule_id IS NOT NULL AND is_active = TRUE;
+
+-- 3. Recorded Bill Payments (Integrated into financial_transactions / financial_transfers & double-entry ledger)
+CREATE TABLE bill_payments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    bill_id UUID NOT NULL REFERENCES bills(id) ON DELETE CASCADE,
+    financial_account_id UUID REFERENCES financial_accounts(id) ON DELETE SET NULL,
+    transaction_id UUID REFERENCES financial_transactions(id) ON DELETE SET NULL,
+    transfer_id UUID REFERENCES financial_transfers(id) ON DELETE SET NULL,
+    amount_paid NUMERIC(19, 2) NOT NULL,
+    currency VARCHAR(3) NOT NULL DEFAULT 'INR',
+    payment_date DATE NOT NULL,
+    payment_method VARCHAR(30) NOT NULL,
+    reference_number VARCHAR(100),
+    notes TEXT,
+    idempotency_key VARCHAR(100),
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX uq_bill_payments_idempotency ON bill_payments(user_id, bill_id, idempotency_key)
+    WHERE idempotency_key IS NOT NULL;
+
+-- 4. Durable Bill Reminders (Multi-Worker Claimable via FOR UPDATE SKIP LOCKED)
+CREATE TABLE bill_reminders (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    bill_id UUID NOT NULL REFERENCES bills(id) ON DELETE CASCADE,
+    offset_days INTEGER NOT NULL,
+    reminder_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    channels JSON NOT NULL,
+    is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    delivery_status VARCHAR(20) NOT NULL DEFAULT 'pending', -- pending, delivered, partial, unavailable, failed, cancelled
+    channel_outcomes JSON NOT NULL DEFAULT '{}',
+    retry_count INTEGER NOT NULL DEFAULT 0,
+    max_retries INTEGER NOT NULL DEFAULT 3,
+    next_retry_at TIMESTAMP WITH TIME ZONE,
+    last_attempt_at TIMESTAMP WITH TIME ZONE,
+    delivered_at TIMESTAMP WITH TIME ZONE,
+    idempotency_key VARCHAR(120) NOT NULL UNIQUE,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+-- 5. Private Supporting Bill Documents
+CREATE TABLE bill_documents (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    bill_id UUID NOT NULL REFERENCES bills(id) ON DELETE CASCADE,
+    original_filename VARCHAR(255) NOT NULL,
+    file_type VARCHAR(15) NOT NULL,
+    content_type VARCHAR(100) NOT NULL,
+    file_size INTEGER NOT NULL,
+    file_hash VARCHAR(64) NOT NULL,
+    storage_key VARCHAR(500) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+-- 6. Persistent In-App Notifications
+CREATE TABLE notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title VARCHAR(200) NOT NULL,
+    message TEXT NOT NULL,
+    notification_type VARCHAR(40) NOT NULL,
+    related_bill_id UUID REFERENCES bills(id) ON DELETE SET NULL,
+    related_payment_id UUID REFERENCES bill_payments(id) ON DELETE SET NULL,
+    is_read BOOLEAN NOT NULL DEFAULT FALSE,
+    read_at TIMESTAMP WITH TIME ZONE,
+    dedupe_key VARCHAR(120) UNIQUE,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+```

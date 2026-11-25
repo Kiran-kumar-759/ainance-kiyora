@@ -185,5 +185,69 @@ class EmailService:
         )
         return self._deliver(message)
 
+    def send_bill_reminder_email(
+        self,
+        to_email: str,
+        full_name: str,
+        bill_name: str,
+        amount_display: str,
+        due_date_display: str,
+        status_note: str,
+    ) -> tuple[bool, str, str]:
+        """
+        Dispatches a bill due reminder email when SMTP_ENABLED=True.
+        Returns (False, 'unavailable', ...) when SMTP is not configured
+        rather than fabricating email delivery.
+        """
+        subject = f"Bill Reminder: {bill_name} due {due_date_display} — {settings.APP_NAME}"
+        plain_text = (
+            f"Hello {full_name},\n\n"
+            f"Reminder for your bill:\n"
+            f"- Bill: {bill_name}\n"
+            f"- Amount: {amount_display}\n"
+            f"- Due Date: {due_date_display}\n"
+            f"- Status: {status_note}\n\n"
+            f"Review and record payment in your Bills dashboard: {settings.FRONTEND_URL}\n"
+        )
+        html_text = f"""
+        <!DOCTYPE html>
+        <html>
+        <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1e293b; max-width: 600px; margin: 0 auto; padding: 24px;">
+            <div style="background-color: #0f172a; padding: 18px; border-radius: 10px 10px 0 0;">
+                <h1 style="color: #ffffff; margin: 0; font-size: 18px;">{settings.APP_NAME}</h1>
+            </div>
+            <div style="background-color: #ffffff; padding: 24px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 10px 10px;">
+                <h2 style="font-size: 16px; color: #0f172a; margin-top: 0;">Bill Payment Reminder</h2>
+                <p>Hello {full_name},</p>
+                <p><strong>{bill_name}</strong> ({status_note})</p>
+                <ul>
+                    <li><strong>Amount:</strong> {amount_display}</li>
+                    <li><strong>Due Date:</strong> {due_date_display}</li>
+                </ul>
+                <p style="font-size: 12px; color: #64748b;">Open {settings.APP_NAME} to record your payment once paid.</p>
+            </div>
+        </body>
+        </html>
+        """
+        message = EmailMessage(
+            to_email=to_email,
+            subject=subject,
+            html_content=html_text,
+            plain_content=plain_text,
+        )
+        self._sent_mailbox.append(message)
+
+        if not settings.SMTP_ENABLED:
+            return (
+                False,
+                "unavailable",
+                "SMTP email delivery is not configured (SMTP_ENABLED=false).",
+            )
+
+        delivered = self._deliver(message)
+        if delivered:
+            return True, "delivered", "Email dispatched via configured SMTP server."
+        return False, "failed", "SMTP dispatch failed; scheduled for retry."
+
 
 email_service = EmailService()

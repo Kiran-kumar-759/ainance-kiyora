@@ -20,6 +20,7 @@ import { BankingPage } from '../pages/banking/BankingPage';
 import { ImportsPage } from '../pages/imports/ImportsPage';
 import { AnalyticsPage } from '../pages/analytics/AnalyticsPage';
 import { ReportsPage } from '../pages/reports/ReportsPage';
+import { BillsPage } from '../pages/bills/BillsPage';
 import { TransactionNavigationFilters } from '../types/analytics';
 
 const PROTECTED_VIEWS = new Set([
@@ -31,6 +32,7 @@ const PROTECTED_VIEWS = new Set([
   'imports',
   'analytics',
   'reports',
+  'bills',
   'profile',
   'preferences',
   'sessions',
@@ -119,6 +121,9 @@ const AppContent: React.FC = () => {
 
       case 'reports':
         return <ReportsPage onNavigate={handleNavigate} />;
+
+      case 'bills':
+        return <BillsPage onNavigate={handleNavigate} />;
 
       case 'login':
         return <LoginPage onNavigate={handleNavigate} />;

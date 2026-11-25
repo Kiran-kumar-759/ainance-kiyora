@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   LayoutDashboard,
   BarChart3,
@@ -32,11 +32,15 @@ import {
   UserPlus,
   ArrowRightLeft,
   Landmark,
+  Bell,
+  CheckCheck,
 } from 'lucide-react';
 import { config } from '../lib/config';
 import { Badge } from '../components/common/Badge';
 import { useAuth } from '../context/AuthContext';
 import { authApi } from '../services/authApi';
+import { billsApi } from '../services/billsApi';
+import { AppNotification } from '../types/bills';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -72,6 +76,51 @@ export const AppShell: React.FC<AppShellProps> = ({
   const { user, isAuthenticated, logout } = useAuth();
   const [resendStatus, setResendStatus] = useState<string | null>(null);
   const [isResending, setIsResending] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [unreadCount, setUnreadCount] = useState<number>(0);
+
+  const loadNotifications = async () => {
+    if (!isAuthenticated) {
+      setNotifications([]);
+      setUnreadCount(0);
+      return;
+    }
+    try {
+      const res = await billsApi.listNotifications(false);
+      setNotifications(Array.isArray(res?.items) ? res.items.slice(0, 8) : []);
+      setUnreadCount(typeof res?.unread_count === 'number' ? res.unread_count : 0);
+    } catch {
+      // Non-fatal in shell header when offline or during partial renders
+    }
+  };
+
+  useEffect(() => {
+    void loadNotifications();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, currentView]);
+
+  const handleMarkNotificationRead = async (notificationId: string) => {
+    try {
+      await billsApi.markNotificationRead(notificationId);
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notificationId ? { ...n, is_read: true } : n))
+      );
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleMarkAllRead = async () => {
+    try {
+      await billsApi.markAllNotificationsRead();
+      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+      setUnreadCount(0);
+    } catch {
+      // ignore
+    }
+  };
 
   const handleResendVerification = async () => {
     if (!user?.email) return;
@@ -201,7 +250,12 @@ export const AppShell: React.FC<AppShellProps> = ({
     {
       title: 'Payments & Commitments',
       items: [
-        { name: 'Bills', icon: CalendarDays, futurePhase: 'Phase 7' },
+        {
+          name: 'Bills',
+          icon: CalendarDays,
+          view: 'bills',
+          active: currentView === 'bills',
+        },
         { name: 'Subscriptions', icon: CreditCard, futurePhase: 'Phase 7' },
         { name: 'Loans & EMIs', icon: FileText, futurePhase: 'Phase 8' },
       ],
@@ -237,7 +291,7 @@ export const AppShell: React.FC<AppShellProps> = ({
               {config.appTitle}
             </span>
             <div className="text-[10px] text-slate-400 font-mono tracking-wider">
-              INDIA SAAS • Phase 4
+              INDIA SAAS • Phase 5
             </div>
           </div>
         </div>
@@ -435,7 +489,95 @@ export const AppShell: React.FC<AppShellProps> = ({
 
             {/* Auth Action Buttons in Header */}
             {isAuthenticated ? (
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-2 relative">
+                {/* Notification Bell */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    aria-label="Notifications"
+                    onClick={() => {
+                      const next = !notificationsOpen;
+                      setNotificationsOpen(next);
+                      if (next) void loadNotifications();
+                    }}
+                    className="relative inline-flex items-center justify-center p-2 text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
+                    title="Bill & payment notifications"
+                  >
+                    <Bell className="w-4 h-4" />
+                    {unreadCount > 0 && (
+                      <span
+                        data-testid="unread-notifications-badge"
+                        className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 flex items-center justify-center text-[10px] font-bold bg-rose-600 text-white rounded-full"
+                      >
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                      </span>
+                    )}
+                  </button>
+
+                  {notificationsOpen && (
+                    <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl border border-slate-200 shadow-lg z-50 overflow-hidden">
+                      <div className="px-3.5 py-2.5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+                        <span className="text-xs font-semibold text-slate-800">
+                          Notifications ({unreadCount} unread)
+                        </span>
+                        {unreadCount > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => void handleMarkAllRead()}
+                            className="inline-flex items-center space-x-1 text-[11px] font-medium text-emerald-700 hover:text-emerald-800"
+                          >
+                            <CheckCheck className="w-3.5 h-3.5" />
+                            <span>Mark all read</span>
+                          </button>
+                        )}
+                      </div>
+                      <div className="max-h-72 overflow-y-auto divide-y divide-slate-100">
+                        {notifications.length === 0 ? (
+                          <div className="p-4 text-xs text-slate-500 text-center">
+                            No notifications yet.
+                          </div>
+                        ) : (
+                          notifications.map((n) => (
+                            <div
+                              key={n.id}
+                              onClick={() => {
+                                if (!n.is_read) void handleMarkNotificationRead(n.id);
+                                setNotificationsOpen(false);
+                                onNavigate('bills');
+                              }}
+                              className={`p-3 cursor-pointer hover:bg-slate-50 transition-colors ${
+                                n.is_read ? 'bg-white' : 'bg-emerald-50/40'
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="text-xs font-semibold text-slate-900">{n.title}</p>
+                                {!n.is_read && (
+                                  <span className="w-2 h-2 mt-1 rounded-full bg-emerald-600 flex-shrink-0" />
+                                )}
+                              </div>
+                              <p className="text-[11px] text-slate-600 mt-0.5 line-clamp-2">
+                                {n.message}
+                              </p>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                      <div className="px-3.5 py-2 border-t border-slate-100 bg-slate-50 text-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNotificationsOpen(false);
+                            onNavigate('bills');
+                          }}
+                          className="text-xs font-medium text-emerald-700 hover:text-emerald-800"
+                        >
+                          Open Bills & Notifications
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <button
                   type="button"
                   onClick={() => onNavigate('profile')}
