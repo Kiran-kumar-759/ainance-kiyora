@@ -100,80 +100,206 @@ const STARTER_PROMPTS = [
   'Compare PPF and ELSS tax benefits under Section 80C in India.',
 ];
 
+function renderInlineTokens(
+  text: string,
+  citationIds: Set<number>,
+  onCitationClick: (citationNum: number) => void,
+  keyPrefix: string
+): React.ReactNode[] {
+  const parts = text.split(/(\[\d+\]|【\d+】|\*\*[^*]+\*\*|\*[^*\n]+\*|`[^`]+`)/g);
+  return parts.map((part, idx) => {
+    const citMatch = /^(?:\[(\d+)\]|【(\d+)】)$/.exec(part);
+    if (citMatch) {
+      const num = Number(citMatch[1] || citMatch[2]);
+      const clickable = citationIds.has(num);
+      return clickable ? (
+        <button
+          key={`${keyPrefix}-c-${idx}`}
+          type="button"
+          onClick={() => onCitationClick(num)}
+          className="inline-flex items-center px-1.5 py-0.5 mx-0.5 text-[11px] font-semibold rounded bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 align-baseline"
+          title={`View evidence [${num}]`}
+        >
+          [{num}]
+        </button>
+      ) : (
+        <span key={`${keyPrefix}-c-${idx}`} className="text-slate-500 text-xs">
+          [{num}]
+        </span>
+      );
+    }
+    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
+      return (
+        <strong key={`${keyPrefix}-b-${idx}`} className="font-semibold text-slate-900">
+          {renderInlineTokens(part.slice(2, -2), citationIds, onCitationClick, `${keyPrefix}-bi-${idx}`)}
+        </strong>
+      );
+    }
+    if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
+      return (
+        <em key={`${keyPrefix}-em-${idx}`} className="italic text-slate-700">
+          {renderInlineTokens(part.slice(1, -1), citationIds, onCitationClick, `${keyPrefix}-ei-${idx}`)}
+        </em>
+      );
+    }
+    if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
+      return (
+        <code
+          key={`${keyPrefix}-cd-${idx}`}
+          className="px-1 py-0.5 rounded bg-slate-100 text-slate-800 text-xs font-mono"
+        >
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
+    return <React.Fragment key={`${keyPrefix}-t-${idx}`}>{part}</React.Fragment>;
+  });
+}
+
+function parseTableCells(rowLine: string): string[] {
+  const trimmed = rowLine.trim().replace(/^\|/, '').replace(/\|$/, '');
+  return trimmed.split('|').map((c) => c.trim());
+}
+
+function isTableSeparatorRow(rowLine: string): boolean {
+  const trimmed = rowLine.trim();
+  return /^\|?(\s*:?-{2,}:?\s*\|)+\s*:?-{2,}:?\s*\|?$/.test(trimmed);
+}
+
 function renderTextWithCitations(
   content: string,
   citationIds: Set<number>,
   onCitationClick: (citationNum: number) => void
 ): React.ReactNode {
   const lines = content.split('\n');
-  return (
-    <div className="space-y-1.5 text-sm leading-relaxed text-slate-800">
-      {lines.map((line, lineIdx) => {
-        const trimmed = line.trim();
-        if (!trimmed) {
-          return <div key={`sp-${lineIdx}`} className="h-1" />;
-        }
-        const parts = line.split(/(\[\d+\]|\*\*[^*]+\*\*|`[^`]+`)/g);
-        const renderedParts = parts.map((part, idx) => {
-          const citMatch = /^\[(\d+)\]$/.exec(part);
-          if (citMatch) {
-            const num = Number(citMatch[1]);
-            const clickable = citationIds.has(num);
-            return clickable ? (
-              <button
-                key={`c-${lineIdx}-${idx}`}
-                type="button"
-                onClick={() => onCitationClick(num)}
-                className="inline-flex items-center px-1.5 py-0.5 mx-0.5 text-[11px] font-semibold rounded bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 align-baseline"
-                title={`View evidence [${num}]`}
-              >
-                [{num}]
-              </button>
-            ) : (
-              <span key={`c-${lineIdx}-${idx}`} className="text-slate-500 text-xs">
-                {part}
-              </span>
-            );
-          }
-          if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
-            return (
-              <strong key={`b-${lineIdx}-${idx}`} className="font-semibold text-slate-900">
-                {part.slice(2, -2)}
-              </strong>
-            );
-          }
-          if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
-            return (
-              <code
-                key={`cd-${lineIdx}-${idx}`}
-                className="px-1 py-0.5 rounded bg-slate-100 text-slate-800 text-xs font-mono"
-              >
-                {part.slice(1, -1)}
-              </code>
-            );
-          }
-          return <React.Fragment key={`t-${lineIdx}-${idx}`}>{part}</React.Fragment>;
-        });
+  const nodes: React.ReactNode[] = [];
+  let i = 0;
 
-        if (trimmed.startsWith('### ')) {
-          return (
-            <h4 key={`h-${lineIdx}`} className="font-semibold text-slate-900 pt-1">
-              {trimmed.slice(4)}
-            </h4>
-          );
-        }
-        if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
-          return (
-            <div key={`li-${lineIdx}`} className="flex items-start space-x-2 pl-1">
-              <span className="text-indigo-500 mt-1 text-xs">•</span>
-              <span className="flex-1">{renderedParts.slice(0)}</span>
-            </div>
-          );
-        }
-        return <p key={`p-${lineIdx}`}>{renderedParts}</p>;
-      })}
-    </div>
-  );
+  while (i < lines.length) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      nodes.push(<div key={`sp-${i}`} className="h-1" />);
+      i += 1;
+      continue;
+    }
+
+    // Markdown table block detection
+    if (
+      trimmed.startsWith('|') &&
+      i + 1 < lines.length &&
+      isTableSeparatorRow(lines[i + 1])
+    ) {
+      const headers = parseTableCells(trimmed);
+      const bodyRows: string[][] = [];
+      let j = i + 2;
+      while (j < lines.length && lines[j].trim().startsWith('|')) {
+        bodyRows.push(parseTableCells(lines[j]));
+        j += 1;
+      }
+      nodes.push(
+        <div key={`tbl-${i}`} className="my-2 overflow-x-auto rounded-lg border border-slate-200 bg-white">
+          <table className="min-w-full divide-y divide-slate-200 text-xs">
+            <thead className="bg-slate-50">
+              <tr>
+                {headers.map((h, hIdx) => (
+                  <th
+                    key={`th-${i}-${hIdx}`}
+                    className="px-3 py-2 text-left font-semibold text-slate-700 whitespace-nowrap"
+                  >
+                    {renderInlineTokens(h, citationIds, onCitationClick, `th-${i}-${hIdx}`)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {bodyRows.map((row, rIdx) => (
+                <tr key={`tr-${i}-${rIdx}`} className="hover:bg-slate-50/70">
+                  {headers.map((_, cIdx) => (
+                    <td key={`td-${i}-${rIdx}-${cIdx}`} className="px-3 py-1.5 text-slate-700">
+                      {renderInlineTokens(
+                        row[cIdx] ?? '',
+                        citationIds,
+                        onCitationClick,
+                        `td-${i}-${rIdx}-${cIdx}`
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+      i = j;
+      continue;
+    }
+
+    if (/^(-{3,}|\*{3,})$/.test(trimmed)) {
+      nodes.push(<hr key={`hr-${i}`} className="my-2 border-slate-200" />);
+      i += 1;
+      continue;
+    }
+
+    const headingMatch = /^(#{1,4})\s+(.+)$/.exec(trimmed);
+    if (headingMatch) {
+      const level = headingMatch[1].length;
+      const body = headingMatch[2];
+      const cls =
+        level === 1
+          ? 'text-base font-bold text-slate-900 pt-1'
+          : level === 2
+          ? 'text-sm font-bold text-slate-900 pt-1'
+          : 'text-sm font-semibold text-slate-900 pt-1';
+      nodes.push(
+        <h4 key={`h-${i}`} className={cls}>
+          {renderInlineTokens(body, citationIds, onCitationClick, `h-${i}`)}
+        </h4>
+      );
+      i += 1;
+      continue;
+    }
+
+    const bulletMatch = /^(?:[-*•])\s+(.+)$/.exec(trimmed);
+    if (bulletMatch) {
+      nodes.push(
+        <div key={`li-${i}`} className="flex items-start space-x-2 pl-1">
+          <span className="text-indigo-500 mt-0.5 text-xs font-bold">•</span>
+          <span className="flex-1">
+            {renderInlineTokens(bulletMatch[1], citationIds, onCitationClick, `li-${i}`)}
+          </span>
+        </div>
+      );
+      i += 1;
+      continue;
+    }
+
+    const orderedMatch = /^(\d+)\.\s+(.+)$/.exec(trimmed);
+    if (orderedMatch) {
+      nodes.push(
+        <div key={`ol-${i}`} className="flex items-start space-x-2 pl-1">
+          <span className="text-indigo-600 font-semibold text-xs mt-0.5 min-w-[1.1rem]">
+            {orderedMatch[1]}.
+          </span>
+          <span className="flex-1">
+            {renderInlineTokens(orderedMatch[2], citationIds, onCitationClick, `ol-${i}`)}
+          </span>
+        </div>
+      );
+      i += 1;
+      continue;
+    }
+
+    nodes.push(
+      <p key={`p-${i}`}>
+        {renderInlineTokens(trimmed, citationIds, onCitationClick, `p-${i}`)}
+      </p>
+    );
+    i += 1;
+  }
+
+  return <div className="space-y-1.5 text-sm leading-relaxed text-slate-800">{nodes}</div>;
 }
 
 export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {

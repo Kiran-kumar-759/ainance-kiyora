@@ -84,7 +84,13 @@ const sampleConversation = {
       id: 'm-2',
       conversation_id: 'conv-1',
       role: 'assistant' as const,
-      content: 'Your Food spend is ₹1,250 [1] and RBI daily UPI cap is ₹1,00,000 [2].',
+      content:
+        '## Spending Snapshot\n' +
+        '| Metric | Amount |\n' +
+        '|--------|--------|\n' +
+        '| Food Spend | ₹1,250 [1] |\n' +
+        '| RBI UPI Cap | ₹1,00,000 【2】 |\n' +
+        '- Net impact tracked cleanly.',
       provider_used: 'tavily',
       llm_model: 'llama-3.3-70b-versatile',
       web_search_used: true,
@@ -165,6 +171,9 @@ describe('AssistantPage (Phase 10)', () => {
     expect(screen.getByText('Personal Financial Records & Documents')).toBeInTheDocument();
     expect(screen.getByText('External Web Research Sources')).toBeInTheDocument();
     expect(screen.getByText('www.npci.org.in')).toBeInTheDocument();
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(screen.getByText('Net impact tracked cleanly.')).toBeInTheDocument();
+    expect(screen.queryByText(/•-/)).not.toBeInTheDocument();
 
     // Switch to unconfigured Firecrawl -> shows unavailable warning & persists preference
     fireEvent.click(screen.getByRole('button', { name: /Firecrawl/i }));

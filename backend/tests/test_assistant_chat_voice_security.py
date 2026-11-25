@@ -256,11 +256,28 @@ def test_personal_finance_tools_citations_and_no_private_leak_in_web_query(
     assert len(body["evidence_items"]) >= 2
     assert any("73,750.00" in e["summary"] or "HDFC Savings Main" in e["title"] for e in body["evidence_items"])
 
-    # Mock Groq returning prompt-injection/out-of-range citation [99] -> orchestrator strips invalid [99]
+    # Casual greeting ("Hi") even with web_search_enabled=True must NOT trigger web search or tool dump
+    msg_hi = tc.post(
+        f"/api/v1/assistant/conversations/{conv['id']}/messages",
+        json={
+            "content": "Hi",
+            "web_search_enabled": True,
+            "web_provider": "tavily",
+            "include_personal_context": True,
+        },
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert msg_hi.status_code == 200, msg_hi.text
+    hi_body = msg_hi.json()
+    assert hi_body["web_search_used"] is False
+    assert hi_body["tools_invoked"] == []
+    assert captured_search_queries == []
+
+    # Mock Groq returning fullwidth 【1】 citation & fake 【99】 citation -> normalized & invalid stripped
     monkeypatch.setattr(GroqAiProvider, "is_available", lambda self: True)
 
     class _FakeMsg:
-        content = "Per RBI guidelines [1] and your HDFC balance [2], note fake citation [99]."
+        content = "Per RBI guidelines 【1】 and your HDFC balance [2], note fake citation 【99】."
 
     class _FakeChoice:
         message = _FakeMsg()
@@ -295,6 +312,7 @@ def test_personal_finance_tools_citations_and_no_private_leak_in_web_query(
     assert wbody["web_search_used"] is True
     assert wbody["provider_used"] == "tavily"
     assert "[99]" not in wbody["content"]
+    assert "【99】" not in wbody["content"]
     assert "[1]" in wbody["content"]
     # Ensure personal balance INR 73750 was NEVER leaked into web query string
     assert captured_search_queries
