@@ -76,18 +76,31 @@ class GroqAiProvider:
 
         try:
             client = self._build_client()
-            response = client.chat.completions.create(
-                model=self.model_name,
-                temperature=0.0,
-                max_tokens=220,
-                response_format={"type": "json_object"},
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": json.dumps(user_payload)},
-                ],
-            )
-            content = response.choices[0].message.content or ""
-            return validate_groq_categorization(content, payload.allowed_categories)
+            candidate_models = [self.model_name] + [
+                m for m in ("openai/gpt-oss-120b", "qwen/qwen3.8-27b") if m != self.model_name
+            ]
+            for model_id in candidate_models:
+                try:
+                    response = client.chat.completions.create(
+                        model=model_id,
+                        temperature=0.0,
+                        max_tokens=512,
+                        response_format={"type": "json_object"},
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": json.dumps(user_payload)},
+                        ],
+                    )
+                    content = response.choices[0].message.content or ""
+                    parsed = validate_groq_categorization(content, payload.allowed_categories)
+                    if parsed is not None:
+                        self.model_name = model_id
+                        return parsed
+                except Exception as inner_exc:
+                    if type(inner_exc).__name__ in ("NotFoundError", "BadRequestError"):
+                        continue
+                    raise
+            return None
         except Exception as exc:
             logger.warning("Groq categorization fallback to local mode: %s", type(exc).__name__)
             return None
@@ -114,18 +127,31 @@ class GroqAiProvider:
 
         try:
             client = self._build_client()
-            response = client.chat.completions.create(
-                model=self.model_name,
-                temperature=0.1,
-                max_tokens=260,
-                response_format={"type": "json_object"},
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": json.dumps(user_payload)},
-                ],
-            )
-            content = response.choices[0].message.content or ""
-            return validate_groq_insight_narrative(content)
+            candidate_models = [self.model_name] + [
+                m for m in ("openai/gpt-oss-120b", "qwen/qwen3.8-27b") if m != self.model_name
+            ]
+            for model_id in candidate_models:
+                try:
+                    response = client.chat.completions.create(
+                        model=model_id,
+                        temperature=0.1,
+                        max_tokens=512,
+                        response_format={"type": "json_object"},
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": json.dumps(user_payload)},
+                        ],
+                    )
+                    content = response.choices[0].message.content or ""
+                    parsed = validate_groq_insight_narrative(content)
+                    if parsed is not None:
+                        self.model_name = model_id
+                        return parsed
+                except Exception as inner_exc:
+                    if type(inner_exc).__name__ in ("NotFoundError", "BadRequestError"):
+                        continue
+                    raise
+            return None
         except Exception as exc:
             logger.warning("Groq insight enrichment fallback to local text: %s", type(exc).__name__)
             return None

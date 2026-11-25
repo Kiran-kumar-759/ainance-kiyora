@@ -1,12 +1,16 @@
 import json
+from pathlib import Path
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+_BACKEND_ENV = Path(__file__).resolve().parents[2] / ".env"
+_ROOT_ENV = Path(__file__).resolve().parents[3] / ".env"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(str(_ROOT_ENV), str(_BACKEND_ENV), ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -132,7 +136,7 @@ class Settings(BaseSettings):
     AI_WORKER_INTERVAL_SECONDS: int = 20
     GROQ_ENABLED: bool = False
     GROQ_API_KEY: str | None = None
-    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    GROQ_MODEL: str = "openai/gpt-oss-120b"
     GROQ_TIMEOUT_SECONDS: float = 12.0
     GROQ_MAX_RETRIES: int = 2
 

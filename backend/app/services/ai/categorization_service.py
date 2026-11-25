@@ -214,7 +214,12 @@ class CategorizationOutcome:
     llm_calls: int = 0
 
 
-def _tx_signature(tx: FinancialTransaction, use_ai_fallback: bool, model_version: str | None) -> str:
+def _tx_signature(
+    tx: FinancialTransaction,
+    use_ai_fallback: bool,
+    model_version: str | None,
+    ai_available: bool = False,
+) -> str:
     raw = "|".join(
         [
             str(tx.id),
@@ -225,6 +230,7 @@ def _tx_signature(tx: FinancialTransaction, use_ai_fallback: bool, model_version
             str(tx.category_id or ""),
             str(use_ai_fallback),
             model_version or "",
+            str(ai_available),
         ]
     )
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
@@ -328,7 +334,7 @@ def run_categorization_for_user(
 
     for tx in txs:
         existing_rec = repo.get_categorization_by_tx(db, user_id, tx.id)
-        sig = _tx_signature(tx, use_ai_fallback, model_version)
+        sig = _tx_signature(tx, use_ai_fallback, model_version, provider.is_available())
 
         if (
             existing_rec is not None

@@ -41,7 +41,17 @@ def _upsert_insight(
     final_action = suggested_action
     provider_used = "local"
 
-    if enrich_with_ai and provider.is_available() and rec is None:
+    already_enriched = (
+        rec is not None
+        and provider.is_available()
+        and rec.provider_name == provider.provider_name
+    )
+    if already_enriched and rec is not None:
+        final_title = rec.title
+        final_desc = rec.description
+        final_action = rec.suggested_action or suggested_action
+        provider_used = rec.provider_name or provider.provider_name
+    elif enrich_with_ai and provider.is_available():
         enriched = provider.enrich_insight_narrative(
             InsightNarrativeAiInput(
                 insight_type=insight_type,
