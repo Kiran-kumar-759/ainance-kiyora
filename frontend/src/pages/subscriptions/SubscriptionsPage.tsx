@@ -42,6 +42,36 @@ interface SubscriptionsPageProps {
 
 type SubTab = 'active' | 'all' | 'payments' | 'analytics' | 'candidates';
 
+function formatPaidDuration(s: Subscription): string {
+  const completedCount =
+    s.paid_cycles_count ??
+    (s.payments || []).filter((p) => p.payment_status === 'completed').length;
+
+  let monthsVal: number;
+  if (s.months_paid !== undefined && s.months_paid !== null) {
+    monthsVal = Number(s.months_paid);
+  } else {
+    const perCycle =
+      s.billing_frequency === 'yearly'
+        ? 12
+        : s.billing_frequency === 'half_yearly'
+          ? 6
+          : s.billing_frequency === 'quarterly'
+            ? 3
+            : s.billing_frequency === 'weekly'
+              ? 0.25
+              : s.billing_frequency === 'custom'
+                ? (s.custom_interval_days || 30) / 30
+                : 1;
+    monthsVal = Number((completedCount * perCycle).toFixed(1));
+  }
+
+  const cleanMonths = Number.isInteger(monthsVal) ? String(monthsVal) : monthsVal.toFixed(1);
+  const moWord = monthsVal === 1 ? 'month' : 'months';
+  const payWord = completedCount === 1 ? 'payment' : 'payments';
+  return `${cleanMonths} ${moWord} (${completedCount} ${payWord})`;
+}
+
 export const SubscriptionsPage: React.FC<SubscriptionsPageProps> = () => {
   const [tab, setTab] = useState<SubTab>('active');
   const [overview, setOverview] = useState<SubscriptionOverview | null>(null);
@@ -496,6 +526,9 @@ export const SubscriptionsPage: React.FC<SubscriptionsPageProps> = () => {
                             </div>
                             <div className="text-[10px] text-gray-500 mt-0.5">
                               Paid total: <strong className="text-emerald-700">{formatINR(s.total_actual_paid)}</strong>
+                            </div>
+                            <div className="text-[10px] text-indigo-700 font-medium mt-0.5">
+                              Paid for: <strong>{formatPaidDuration(s)}</strong>
                             </div>
                           </div>
                         </div>

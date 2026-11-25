@@ -155,6 +155,19 @@ class SubscriptionService:
             and 0 <= (sub.trial_end_date - user_today).days <= DUE_SOON_DAYS
         )
         completed_payments = [p for p in (sub.payments or []) if p.payment_status == "completed"]
+        paid_cycles_count = len(completed_payments)
+        freq_months_map = {
+            "monthly": Decimal("1.0"),
+            "quarterly": Decimal("3.0"),
+            "half_yearly": Decimal("6.0"),
+            "yearly": Decimal("12.0"),
+            "weekly": Decimal("0.25"),
+        }
+        cycle_months = freq_months_map.get(
+            sub.billing_frequency,
+            (Decimal(sub.custom_interval_days or 30) / Decimal("30")),
+        )
+        months_paid = (Decimal(paid_cycles_count) * cycle_months).quantize(Decimal("0.1"))
         total_actual_paid = quantize_inr(
             sum((Decimal(p.amount_paid) for p in completed_payments), Decimal("0.00"))
         )
@@ -197,6 +210,8 @@ class SubscriptionService:
             reminder_days_before=list(sub.reminder_days_before or []),
             notification_channels=dict(sub.notification_channels or {}),
             total_actual_paid=total_actual_paid,
+            paid_cycles_count=paid_cycles_count,
+            months_paid=months_paid,
             created_at=sub.created_at,
             updated_at=sub.updated_at,
             price_history=[

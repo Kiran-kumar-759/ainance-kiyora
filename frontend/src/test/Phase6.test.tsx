@@ -76,7 +76,9 @@ const sampleSub: Subscription = {
   reminder_enabled: true,
   reminder_days_before: [7, 3, 1, 0],
   notification_channels: { in_app: true, email: false, sms: false },
-  total_actual_paid: '199.00',
+  total_actual_paid: '398.00',
+  paid_cycles_count: 2,
+  months_paid: '2.0',
   created_at: '2026-10-25T00:00:00Z',
   updated_at: '2026-10-25T00:00:00Z',
   price_history: [
@@ -293,6 +295,7 @@ describe('Phase 6 Subscriptions & Loans Frontend', () => {
       expect(screen.getByText('Netflix Standard')).toBeInTheDocument();
     });
     expect(screen.getByText('₹2,388.00')).toBeInTheDocument();
+    expect(screen.getByText(/2 months \(2 payments\)/i)).toBeInTheDocument();
 
     // Mark as Paid right from subscription card
     fireEvent.click(screen.getByText('Mark as Paid'));

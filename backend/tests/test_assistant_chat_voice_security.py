@@ -325,6 +325,34 @@ def test_personal_finance_tools_citations_and_no_private_leak_in_web_query(
     assert "73750" not in captured_search_queries[0]
     assert "HDFC Savings Main" not in captured_search_queries[0]
 
+    # Web follow-up phrase ("yes search in web") triggers web_research using previous topic
+    captured_search_queries.clear()
+    followup_web = tc.post(
+        f"/api/v1/assistant/conversations/{conv['id']}/messages",
+        json={
+            "content": "What are JioHotstar plan prices?",
+            "web_search_enabled": True,
+            "web_provider": "tavily",
+        },
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert followup_web.status_code == 200
+    assert followup_web.json()["web_search_used"] is True
+
+    captured_search_queries.clear()
+    confirm_web = tc.post(
+        f"/api/v1/assistant/conversations/{conv['id']}/messages",
+        json={
+            "content": "yes search in web",
+            "web_search_enabled": True,
+            "web_provider": "tavily",
+        },
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert confirm_web.status_code == 200
+    assert confirm_web.json()["web_search_used"] is True
+    assert captured_search_queries and "jiohotstar" in captured_search_queries[0].lower()
+
 
 def test_voice_parse_expense_requires_confirmation_and_does_not_write_ledger(assistant_api_client):
     tc, created_emails = assistant_api_client

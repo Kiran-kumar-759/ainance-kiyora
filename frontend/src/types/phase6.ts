@@ -93,6 +93,8 @@ export interface Subscription {
   reminder_days_before: number[];
   notification_channels: Record<string, boolean>;
   total_actual_paid: string | number;
+  paid_cycles_count?: number;
+  months_paid?: string | number;
   created_at: string;
   updated_at: string;
   price_history: SubscriptionPriceHistory[];

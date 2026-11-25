@@ -229,6 +229,8 @@ class SubscriptionResponse(BaseModel):
     notification_channels: dict[str, bool]
 
     total_actual_paid: Decimal = Decimal("0.00")
+    paid_cycles_count: int = 0
+    months_paid: Decimal = Decimal("0.0")
     created_at: dt.datetime
     updated_at: dt.datetime
 

@@ -107,12 +107,67 @@ _WEB_KEYWORDS = (
     "upi limit",
     "credit card",
     "what is",
+    "who is",
+    "how to",
     "explain",
     "research",
+    "search",
+    "web",
+    "online",
+    "google",
+    "browse",
+    "look up",
+    "lookup",
+    "check online",
+    "price",
+    "pricing",
+    "plan",
+    "plans",
+    "tariff",
+    "cost of",
+    "jiohotstar",
+    "hotstar",
+    "netflix",
+    "amazon prime",
+    "spotify",
+    "sonyliv",
+    "youtube premium",
+    "nifty",
+    "sensex",
+    "stock",
+    "gold rate",
+    "silver rate",
+    "news",
+    "recommend",
+    "best ",
+)
+
+_WEB_FOLLOWUP_RE = re.compile(
+    r"^\s*(?:yes[\s,]*)?(?:search(?:\s+(?:in|on|the))?\s+web|search\s+(?:online|now|it)|"
+    r"perform\s+(?:it\s+|web\s+search\s+)?now|do\s+it|go\s+ahead|check\s+online|look\s+it\s+up)\s*[!.]*\s*$",
+    re.I,
 )
 
 
-def _detect_intents(query: str, include_personal: bool, web_enabled: bool) -> dict[str, bool]:
+def _resolve_web_search_query(query: str, history: list[AiMessage]) -> str:
+    """When user says a follow-up like 'yes search in web' or 'perform now', include prior topic."""
+    raw = (query or "").strip()
+    if not _WEB_FOLLOWUP_RE.match(raw) and len(raw.split()) > 3:
+        return raw
+    for m in reversed(history):
+        if m.role == "user" and not _WEB_FOLLOWUP_RE.match(m.content or "") and not _CASUAL_GREETING_RE.match(m.content or ""):
+            prev = (m.content or "").strip()
+            if prev:
+                return f"{prev} India" if len(prev) < 120 else prev[:180]
+    return raw
+
+
+def _detect_intents(
+    query: str,
+    include_personal: bool,
+    web_enabled: bool,
+    history: list[AiMessage] | None = None,
+) -> dict[str, bool]:
     raw_q = (query or "").strip()
     if _CASUAL_GREETING_RE.match(raw_q):
         return {
@@ -126,6 +181,9 @@ def _detect_intents(query: str, include_personal: bool, web_enabled: bool) -> di
         }
 
     q = raw_q.lower()
+    is_web_followup = bool(_WEB_FOLLOWUP_RE.match(raw_q))
+    explicit_web = is_web_followup or any(k in q for k in _WEB_KEYWORDS)
+
     wants_doc = include_personal and any(k in q for k in _DOCUMENT_KEYWORDS)
     wants_balance = include_personal and any(
         k in q for k in ("balance", "account", "bank", "cash", "net worth", "have left", "money")
@@ -140,14 +198,16 @@ def _detect_intents(query: str, include_personal: bool, web_enabled: bool) -> di
         k in q for k in ("forecast", "predict", "assumption", "cash flow", "cashflow", "end of this month", "have left", "saving", "risk", "increase")
     )
 
-    explicit_web = any(k in q for k in _WEB_KEYWORDS)
     any_personal_hit = any([wants_doc, wants_balance, wants_spend, wants_comm, wants_fc]) or any(
         k in q for k in _PERSONAL_FINANCE_KEYWORDS
     )
-    # Trigger web search ONLY for explicit research/external-rule/comparison queries, never casual chat or personal-only questions
     wants_web = bool(web_enabled and explicit_web)
 
-    # Fallback: if asking a substantive non-casual personal question without specific keyword hits, gather spending overview cleanly
+    # Also treat explicit questions about external entities (no 'my'/'i' personal words) as web-eligible
+    if web_enabled and not wants_web and not any_personal_hit and ("?" in raw_q or len(q.split()) >= 3):
+        if not any(w in q for w in ("my ", " i ", "mine", "me ")):
+            wants_web = True
+
     if include_personal and not any_personal_hit and not wants_web and len(q.split()) >= 4:
         wants_spend = True
         wants_balance = True
@@ -435,7 +495,7 @@ def run_assistant_turn(
             "error_message": None,
         }
 
-    intents = _detect_intents(query, include_personal_context, web_search_enabled)
+    intents = _detect_intents(query, include_personal_context, web_search_enabled, history)
     tools_invoked: list[str] = []
     tool_outputs: dict[str, Any] = {}
     all_evidence: list[EvidenceItem] = []
@@ -483,9 +543,10 @@ def run_assistant_turn(
         web_search_used = True
         provider_used = web_provider
         tools_invoked.append(f"web_research:{web_provider}")
+        effective_web_query = _resolve_web_search_query(query, history)
         w_res = WebResearchService().execute_search(
             provider_id=web_provider,
-            query=query,
+            query=effective_web_query,
             max_results=settings.WEB_RESEARCH_MAX_RESULTS,
             include_content=True,
             topic="finance",
