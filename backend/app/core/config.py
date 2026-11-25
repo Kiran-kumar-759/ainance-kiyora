@@ -140,8 +140,16 @@ class Settings(BaseSettings):
     GROQ_TIMEOUT_SECONDS: float = 8.0
     GROQ_MAX_RETRIES: int = 1
 
-    # External Provider Conventions (Future Phases 10+)
+    # Web Research Providers & AI Assistant (Phase 10)
+    LANGSEARCH_API_KEY: str | None = None
+    FIRECRAWL_API_KEY: str | None = None
     TAVILY_API_KEY: str | None = None
+    DEFAULT_WEB_RESEARCH_PROVIDER: str = "tavily"
+    WEB_RESEARCH_TIMEOUT_SECONDS: float = 12.0
+    WEB_RESEARCH_MAX_RESULTS: int = 5
+    WEB_RESEARCH_MAX_SCRAPES: int = 2
+    WEB_RESEARCH_MAX_CONTENT_CHARS: int = 4000
+    ASSISTANT_MAX_CONTEXT_MESSAGES: int = 12
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod

@@ -1,4 +1,10 @@
 from app.db.base import Base
+from app.models.assistant import (
+    AiConversation,
+    AiMessage,
+    DocumentRagChunk,
+    UserAiPreference,
+)
 from app.models.auth import (
     EmailVerificationToken,
     PasswordResetToken,
@@ -130,4 +136,8 @@ __all__ = [
     "ForecastExplanation",
     "ForecastScenario",
     "ForecastEvaluation",
+    "UserAiPreference",
+    "AiConversation",
+    "AiMessage",
+    "DocumentRagChunk",
 ]

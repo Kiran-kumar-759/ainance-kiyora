@@ -156,3 +156,16 @@ All routes require `get_current_user`; `POST`/`DELETE` routes require `verify_cs
 - `GET /api/v1/forecasting/history`, `GET /api/v1/forecasting/{forecast_id}`, `GET /api/v1/forecasting/{forecast_id}/explanation` — Inspects persisted forecasts and evidence-backed `ForecastExplanation` links.
 - `POST /api/v1/forecasting/scenarios`, `GET /api/v1/forecasting/scenarios`, `GET /api/v1/forecasting/scenarios/{scenario_id}`, `DELETE /api/v1/forecasting/scenarios/{scenario_id}` — Side-effect-free hypothetical scenario simulator & persisted comparisons.
 - `GET /api/v1/forecasting/accuracy`, `GET /api/v1/forecasting/evaluation/history` — Runs/lists time-aware walk-forward backtests (MAE, RMSE, WAPE, Bias).
+
+---
+
+## Phase 10 — AI Personal Finance Assistant, Personal RAG, Web Research & Voice (`/api/v1/assistant`)
+All routes require HttpOnly cookie auth (`get_current_user`); `POST`, `PATCH`, and `DELETE` enforce `X-CSRF-Token` validation and per-user rate limiting.
+
+- `GET /api/v1/assistant/providers` — Lists the 3 supported web research providers (`langsearch`, `firecrawl`, `tavily`) with live server configuration readiness (`configured`, `supports_full_text`).
+- `GET /api/v1/assistant/preferences`, `PATCH /api/v1/assistant/preferences` — Reads/updates persisted `default_web_provider`, `web_search_enabled`, and `voice_read_aloud_enabled`.
+- `GET /api/v1/assistant/conversations`, `POST /api/v1/assistant/conversations` — Lists or creates persistent user-scoped assistant conversations.
+- `GET /api/v1/assistant/conversations/{conversation_id}`, `PATCH /api/v1/assistant/conversations/{conversation_id}`, `DELETE /api/v1/assistant/conversations/{conversation_id}` — Reads full message thread, renames/updates defaults, or deletes conversation (`404` on cross-user access).
+- `GET /api/v1/assistant/conversations/{conversation_id}/messages`, `POST /api/v1/assistant/conversations/{conversation_id}/messages` — Lists or appends user turn and generates citation-backed assistant response with `tools_invoked`, `citations`, `evidence_items`, `provider_used`, `llm_model`, and explicit error messages.
+- `POST /api/v1/assistant/rag/reindex` — Synchronizes user-scoped PostgreSQL `document_rag_chunks` with active non-rejected Phase 7 documents.
+- `POST /api/v1/assistant/voice/parse-expense` — Parses spoken financial transcript into an editable `VoiceExpenseDraftResponse` without mutating transactions/ledger.

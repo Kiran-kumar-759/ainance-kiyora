@@ -285,7 +285,12 @@ export const AppShell: React.FC<AppShellProps> = ({
           view: 'forecasting',
           active: currentView === 'forecasting',
         },
-        { name: 'AI Assistant', icon: Bot, futurePhase: 'Phase 10' },
+        {
+          name: 'AI Assistant',
+          icon: Bot,
+          view: 'assistant',
+          active: currentView === 'assistant',
+        },
       ],
     },
     {
@@ -316,7 +321,7 @@ export const AppShell: React.FC<AppShellProps> = ({
               {config.appTitle}
             </span>
             <div className="text-[10px] text-slate-400 font-mono tracking-wider">
-              INDIA SAAS • Phase 9
+              INDIA SAAS • Phase 10
             </div>
           </div>
         </div>
@@ -414,7 +419,7 @@ export const AppShell: React.FC<AppShellProps> = ({
         </div>
         <div className="flex items-center justify-between">
           <span className="text-slate-400">Active Phase</span>
-          <span className="text-emerald-400 font-medium text-[11px]">Phase 9 (Forecasting)</span>
+          <span className="text-emerald-400 font-medium text-[11px]">Phase 10 (AI Assistant)</span>
         </div>
       </div>
     </div>
@@ -468,7 +473,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                   {config.appTitle}
                 </h1>
                 <Badge variant="info" className="whitespace-nowrap">
-                  Phase 9: Forecasting &amp; Predictive Analytics
+                  Phase 10: AI Assistant, RAG &amp; Research
                 </Badge>
               </div>
               <p className="text-xs text-slate-500 hidden sm:block">

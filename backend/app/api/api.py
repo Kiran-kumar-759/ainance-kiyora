@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.api.routes import (
     analytics,
+    assistant,
     auth,
     bills,
     documents,
@@ -50,3 +51,4 @@ api_router.include_router(documents.router)
 api_router.include_router(email.router)
 api_router.include_router(intelligence.router)
 api_router.include_router(forecasting.router)
+api_router.include_router(assistant.router)

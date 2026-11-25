@@ -9,6 +9,9 @@ from sqlalchemy.orm import Session, sessionmaker
 # Set environment before loading application
 os.environ["ENVIRONMENT"] = "test"
 os.environ["GROQ_ENABLED"] = "false"
+os.environ["LANGSEARCH_API_KEY"] = ""
+os.environ["FIRECRAWL_API_KEY"] = ""
+os.environ["TAVILY_API_KEY"] = ""
 os.environ["DATABASE_URL"] = os.getenv(
     "TEST_DATABASE_URL",
     "postgresql+psycopg://tenderpilot:tenderpilot@localhost:5432/pfm_test",

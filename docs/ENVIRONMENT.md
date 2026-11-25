@@ -39,3 +39,16 @@
 
 ## Phase 9 — Financial Forecasting
 - Phase 9 forecasting uses deterministic statistical engines on PostgreSQL data and `AiIntelligenceWorker` (`AI_WORKER_ENABLED`, `AI_WORKER_INTERVAL_SECONDS`) with zero additional mandatory environment secrets or external APIs.
+
+
+## Phase 10 — AI Assistant, Web Research Providers & RAG
+- `LANGSEARCH_API_KEY` — Optional server-side credential for LangSearch Web Search (`https://api.langsearch.com/v1/web-search`). Never exposed to frontend or committed to Git.
+- `FIRECRAWL_API_KEY` — Optional server-side credential for Firecrawl Search & Scrape v2 (`https://api.firecrawl.dev/v2/search`, `/v2/scrape`).
+- `TAVILY_API_KEY` — Optional server-side credential for Tavily Search (`https://api.tavily.com/search`).
+- `DEFAULT_WEB_RESEARCH_PROVIDER=tavily` — Default initial web research provider (`langsearch` | `firecrawl` | `tavily`).
+- `WEB_RESEARCH_TIMEOUT_SECONDS=12.0` — Bounded timeout per outbound search/scrape call.
+- `WEB_RESEARCH_MAX_RESULTS=5` — Bounded result count fetched per web search turn.
+- `WEB_RESEARCH_MAX_SCRAPES=2` — Maximum SSRF-validated URLs scraped via Firecrawl per search turn.
+- `WEB_RESEARCH_MAX_CONTENT_CHARS=4000` — Per-source excerpt character cap.
+- `ASSISTANT_MAX_CONTEXT_MESSAGES=12` — Bounded conversation turn history window passed to LLM synthesis.
+- Reuses `GROQ_ENABLED`, `GROQ_API_KEY`, and `GROQ_MODEL` (all disabled/blank in automated tests).

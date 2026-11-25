@@ -332,10 +332,13 @@ class DocumentService:
             ) from exc
 
     def delete_document(self, db: Session, user: User, doc_id: uuid.UUID) -> None:
+        from app.services.assistant.rag_service import purge_document_chunks
+
         doc = self.repo.get_by_id(db, doc_id, user.id)
         if not doc:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.")
         storage_key = doc.storage_key
+        purge_document_chunks(db, user.id, doc.id)
         db.delete(doc)
         db.commit()
         self.storage.delete(storage_key)
@@ -671,12 +674,15 @@ class DocumentService:
     def reject_document(
         self, db: Session, user: User, doc_id: uuid.UUID, req: DocumentRejectRequest
     ) -> FinancialDocumentDetailResponse:
+        from app.services.assistant.rag_service import purge_document_chunks
+
         doc = self.repo.get_by_id(db, doc_id, user.id)
         if not doc:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.")
         doc.processing_status = "rejected"
         doc.rejected_at = dt.datetime.now(dt.UTC)
         doc.rejection_reason = req.reason.strip()
+        purge_document_chunks(db, user.id, doc.id)
         db.add(doc)
         self.repo.add_review_event(
             db,
