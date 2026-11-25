@@ -23,14 +23,18 @@ import {
   TransactionCategorizationList,
 } from '../types/intelligence';
 
-async function intelRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+async function intelRequest<T>(
+  endpoint: string,
+  options: RequestInit & { timeoutMs?: number } = {}
+): Promise<T> {
   const url = `${config.apiBaseUrl}${endpoint}`;
   const method = (options.method || 'GET').toUpperCase();
+  const { timeoutMs = 25000, ...fetchOptions } = options;
 
   const headers: Record<string, string> = {
     Accept: 'application/json',
     'Content-Type': 'application/json',
-    ...(options.headers as Record<string, string>),
+    ...(fetchOptions.headers as Record<string, string>),
   };
 
   if (['POST', 'PATCH', 'DELETE', 'PUT'].includes(method)) {
@@ -41,21 +45,46 @@ async function intelRequest<T>(endpoint: string, options: RequestInit = {}): Pro
     if (token) headers['X-CSRF-Token'] = token;
   }
 
-  let response = await fetch(url, { ...options, headers, credentials: 'include' });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-  if (response.status === 403 && ['POST', 'PATCH', 'DELETE', 'PUT'].includes(method)) {
-    try {
-      const errJson = await response.clone().json();
-      if (String(errJson?.detail || '').toLowerCase().includes('csrf')) {
-        const fresh = await fetchCsrfToken(true);
-        if (fresh) {
-          headers['X-CSRF-Token'] = fresh;
-          response = await fetch(url, { ...options, headers, credentials: 'include' });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...fetchOptions,
+      headers,
+      credentials: 'include',
+      signal: controller.signal,
+    });
+
+    if (response.status === 403 && ['POST', 'PATCH', 'DELETE', 'PUT'].includes(method)) {
+      try {
+        const errJson = await response.clone().json();
+        if (String(errJson?.detail || '').toLowerCase().includes('csrf')) {
+          const fresh = await fetchCsrfToken(true);
+          if (fresh) {
+            headers['X-CSRF-Token'] = fresh;
+            response = await fetch(url, {
+              ...fetchOptions,
+              headers,
+              credentials: 'include',
+              signal: controller.signal,
+            });
+          }
         }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
     }
+  } catch (err) {
+    if ((err as Error)?.name === 'AbortError') {
+      throw new Error(
+        'Analysis request timed out waiting for the server. Please verify the backend is running and retry.'
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
 
   if (!response.ok) {
@@ -88,6 +117,7 @@ export const intelligenceApi = {
   } = {}): Promise<AiProcessingJob> {
     return intelRequest<AiProcessingJob>('/api/v1/intelligence/run', {
       method: 'POST',
+      timeoutMs: 65000,
       body: JSON.stringify({
         reanalyze_all: false,
         use_ai_fallback: true,

@@ -1,6 +1,7 @@
 import datetime as dt
 import hashlib
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -323,6 +324,9 @@ def run_categorization_for_user(
 
     outcome = CategorizationOutcome()
 
+    if not txs:
+        return outcome
+
     # Reset merchant counters before full re-analysis to keep stats exact
     if reanalyze_all and not tx_ids:
         merchants, _ = repo.list_merchants(db, user_id, page=1, page_size=500)
@@ -332,6 +336,9 @@ def run_categorization_for_user(
             db.add(m)
         db.flush()
 
+    prepared: list[dict] = []
+    llm_queue: dict[tuple[str, str, str], CategorizationAiInput] = {}
+
     for tx in txs:
         existing_rec = repo.get_categorization_by_tx(db, user_id, tx.id)
         sig = _tx_signature(tx, use_ai_fallback, model_version, provider.is_available())
@@ -340,7 +347,8 @@ def run_categorization_for_user(
             existing_rec is not None
             and not reanalyze_all
             and existing_rec.input_signature == sig
-            and existing_rec.review_status in ("overridden", "confirmed", "auto_categorized")
+            and existing_rec.review_status
+            in ("overridden", "confirmed", "auto_categorized", "needs_review")
         ):
             if existing_rec.review_status in ("overridden", "confirmed"):
                 outcome.user_preserved += 1
@@ -360,7 +368,9 @@ def run_categorization_for_user(
             )
             existing_rec.merchant_id = existing_rec.merchant_id or merchant.id
             existing_rec.current_category_id = tx.category_id
-            existing_rec.current_category_name = tx.category.name if tx.category else existing_rec.current_category_name
+            existing_rec.current_category_name = (
+                tx.category.name if tx.category else existing_rec.current_category_name
+            )
             existing_rec.input_signature = sig
             existing_rec.updated_at = dt.datetime.now(dt.UTC)
             db.add(existing_rec)
@@ -436,24 +446,79 @@ def run_categorization_for_user(
                     used_model_ver = ml_pred.model_version
                     outcome.ml_matched += 1
 
-        # Layer 5: Optional Groq LLM fallback (only when ambiguous & provider enabled)
+        # Layer 5 queue: Optional Groq LLM fallback (deduplicated & batched off DB thread)
+        llm_key: tuple[str, str, str] | None = None
         if (
             suggested_cat is None
             and use_ai_fallback
             and provider.is_available()
-            and not (existing_rec and existing_rec.input_signature == sig and existing_rec.provider_name == provider.provider_name)
+            and not (
+                existing_rec
+                and existing_rec.input_signature == sig
+                and existing_rec.provider_name == provider.provider_name
+            )
         ):
             allowed = expense_cat_names if tx.transaction_type == "expense" else income_cat_names
-            ai_res = provider.categorize_transaction(
-                CategorizationAiInput(
+            s_desc = sanitize_text_for_ai(tx.description)
+            s_merch = sanitize_text_for_ai(tx.merchant_payee or merchant.normalized_name)
+            llm_key = (tx.transaction_type, s_merch.lower(), s_desc.lower())
+            if llm_key not in llm_queue and len(llm_queue) < 20:
+                llm_queue[llm_key] = CategorizationAiInput(
                     transaction_type=tx.transaction_type,
-                    sanitized_description=sanitize_text_for_ai(tx.description),
-                    sanitized_merchant=sanitize_text_for_ai(tx.merchant_payee or merchant.normalized_name),
+                    sanitized_description=s_desc,
+                    sanitized_merchant=s_merch,
                     amount_band=_amount_band_label(tx.amount),
                     allowed_categories=allowed,
                 )
-            )
-            outcome.llm_calls += 1
+
+        prepared.append(
+            {
+                "tx": tx,
+                "existing_rec": existing_rec,
+                "sig": sig,
+                "merchant": merchant,
+                "suggested_cat": suggested_cat,
+                "method": method,
+                "confidence": confidence,
+                "explanation": explanation,
+                "evidence": evidence,
+                "provider_used": provider_used,
+                "used_model_ver": used_model_ver,
+                "llm_key": llm_key,
+            }
+        )
+
+    # Execute queued Groq calls concurrently (pure network I/O, no SQLAlchemy objects shared)
+    llm_results: dict[tuple[str, str, str], object] = {}
+    if llm_queue and provider.is_available():
+        with ThreadPoolExecutor(max_workers=min(4, len(llm_queue))) as pool:
+            futures = {
+                key: pool.submit(provider.categorize_transaction, payload)
+                for key, payload in llm_queue.items()
+            }
+            for key, fut in futures.items():
+                outcome.llm_calls += 1
+                try:
+                    llm_results[key] = fut.result()
+                except Exception:
+                    llm_results[key] = None
+
+    for item in prepared:
+        tx = item["tx"]
+        existing_rec = item["existing_rec"]
+        sig = item["sig"]
+        merchant = item["merchant"]
+        suggested_cat = item["suggested_cat"]
+        method = item["method"]
+        confidence = item["confidence"]
+        explanation = item["explanation"]
+        evidence = item["evidence"]
+        provider_used = item["provider_used"]
+        used_model_ver = item["used_model_ver"]
+        llm_key = item["llm_key"]
+
+        if suggested_cat is None and llm_key is not None:
+            ai_res = llm_results.get(llm_key)
             if ai_res is not None:
                 ai_cat = categories_by_name.get(ai_res.suggested_category.lower())
                 if ai_cat and ai_cat.category_type == tx.transaction_type:
@@ -474,7 +539,9 @@ def run_categorization_for_user(
             suggested_cat = tx.category
             method = "existing_category"
             confidence = Decimal("0.5500")
-            explanation = f"Retained transaction category '{tx.category.name}'; review if more specific category applies."
+            explanation = (
+                f"Retained transaction category '{tx.category.name}'; review if more specific category applies."
+            )
 
         # Decide review status:
         # Mark needs_review when low confidence, uncategorized, or suggestion differs from current category.
@@ -483,7 +550,12 @@ def run_categorization_for_user(
             suggested_cat is not None and tx.category_id != suggested_cat.id
         )
         is_generic = current_cat_name in (None, "Other Expenses", "Other Income")
-        if suggested_cat is None or confidence < Decimal("0.7500") or differs_from_current or is_generic:
+        if (
+            suggested_cat is None
+            or confidence < Decimal("0.7500")
+            or differs_from_current
+            or is_generic
+        ):
             review_status = "needs_review"
             outcome.needs_review += 1
         else:

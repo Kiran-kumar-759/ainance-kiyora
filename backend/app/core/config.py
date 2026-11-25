@@ -137,8 +137,8 @@ class Settings(BaseSettings):
     GROQ_ENABLED: bool = False
     GROQ_API_KEY: str | None = None
     GROQ_MODEL: str = "openai/gpt-oss-120b"
-    GROQ_TIMEOUT_SECONDS: float = 12.0
-    GROQ_MAX_RETRIES: int = 2
+    GROQ_TIMEOUT_SECONDS: float = 8.0
+    GROQ_MAX_RETRIES: int = 1
 
     # External Provider Conventions (Future Phases 10+)
     TAVILY_API_KEY: str | None = None

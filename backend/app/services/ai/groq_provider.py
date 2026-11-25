@@ -38,9 +38,16 @@ class GroqAiProvider:
         self._enabled = settings.GROQ_ENABLED if enabled is None else enabled
         self._timeout = timeout_seconds or settings.GROQ_TIMEOUT_SECONDS
         self._max_retries = settings.GROQ_MAX_RETRIES if max_retries is None else max_retries
+        self._client = None
+        self._circuit_open = False
 
     def is_available(self) -> bool:
-        return bool(self._enabled and self._api_key and self._api_key.strip())
+        return bool(
+            not self._circuit_open
+            and self._enabled
+            and self._api_key
+            and self._api_key.strip()
+        )
 
     def _build_client(self):
         from groq import Groq
@@ -50,6 +57,11 @@ class GroqAiProvider:
             timeout=self._timeout,
             max_retries=self._max_retries,
         )
+
+    def _get_client(self):
+        if self._client is None:
+            self._client = self._build_client()
+        return self._client
 
     def categorize_transaction(
         self, payload: CategorizationAiInput
@@ -75,7 +87,7 @@ class GroqAiProvider:
         }
 
         try:
-            client = self._build_client()
+            client = self._get_client()
             candidate_models = [self.model_name] + [
                 m for m in ("openai/gpt-oss-120b", "qwen/qwen3.8-27b") if m != self.model_name
             ]
@@ -97,8 +109,11 @@ class GroqAiProvider:
                         self.model_name = model_id
                         return parsed
                 except Exception as inner_exc:
-                    if type(inner_exc).__name__ in ("NotFoundError", "BadRequestError"):
+                    exc_name = type(inner_exc).__name__
+                    if exc_name in ("NotFoundError", "BadRequestError"):
                         continue
+                    if exc_name in ("RateLimitError", "APITimeoutError", "APIConnectionError"):
+                        self._circuit_open = True
                     raise
             return None
         except Exception as exc:
@@ -126,7 +141,7 @@ class GroqAiProvider:
         }
 
         try:
-            client = self._build_client()
+            client = self._get_client()
             candidate_models = [self.model_name] + [
                 m for m in ("openai/gpt-oss-120b", "qwen/qwen3.8-27b") if m != self.model_name
             ]
@@ -148,8 +163,11 @@ class GroqAiProvider:
                         self.model_name = model_id
                         return parsed
                 except Exception as inner_exc:
-                    if type(inner_exc).__name__ in ("NotFoundError", "BadRequestError"):
+                    exc_name = type(inner_exc).__name__
+                    if exc_name in ("NotFoundError", "BadRequestError"):
                         continue
+                    if exc_name in ("RateLimitError", "APITimeoutError", "APIConnectionError"):
+                        self._circuit_open = True
                     raise
             return None
         except Exception as exc:
