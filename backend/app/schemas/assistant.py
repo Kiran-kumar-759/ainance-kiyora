@@ -145,3 +145,12 @@ class RagReindexResponse(BaseModel):
     documents_scanned: int
     chunks_indexed: int
     chunks_removed: int
+
+
+class VoiceTranscribeResponse(BaseModel):
+    transcript: str
+    provider: str
+
+
+class VoiceSpeakRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=2000)

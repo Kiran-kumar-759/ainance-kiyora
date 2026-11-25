@@ -17,6 +17,8 @@ vi.mock('../services/assistantApi', () => ({
     sendMessage: vi.fn(),
     reindexRag: vi.fn(),
     parseVoiceExpense: vi.fn(),
+    transcribeVoice: vi.fn(),
+    synthesizeSpeech: vi.fn(),
   },
 }));
 
@@ -308,5 +310,43 @@ describe('AssistantPage (Phase 10)', () => {
         include_personal_context: true,
       });
     });
+  });
+
+  it('plays Read Aloud via backend WAV fallback when browser speechSynthesis is absent', async () => {
+    vi.mocked(assistantApi.synthesizeSpeech).mockResolvedValue(
+      new Blob(['RIFF'], { type: 'audio/wav' })
+    );
+    const playSpy = vi.fn().mockResolvedValue(undefined);
+    const pauseSpy = vi.fn();
+    vi.stubGlobal(
+      'Audio',
+      vi.fn().mockImplementation(() => ({
+        play: playSpy,
+        pause: pauseSpy,
+        onended: null,
+        onerror: null,
+      }))
+    );
+    if (!URL.createObjectURL) {
+      URL.createObjectURL = vi.fn(() => 'blob:mock-wav');
+    }
+    if (!URL.revokeObjectURL) {
+      URL.revokeObjectURL = vi.fn();
+    }
+
+    render(<AssistantPage onNavigate={mockNavigate} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Read Aloud/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Read Aloud/i }));
+
+    await waitFor(() => {
+      expect(assistantApi.synthesizeSpeech).toHaveBeenCalled();
+      expect(playSpy).toHaveBeenCalled();
+    });
+
+    vi.unstubAllGlobals();
   });
 });

@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db, verify_csrf
@@ -18,9 +18,12 @@ from app.schemas.assistant import (
     UserAiPreferenceUpdateRequest,
     VoiceExpenseDraftResponse,
     VoiceExpenseParseRequest,
+    VoiceSpeakRequest,
+    VoiceTranscribeResponse,
     WebProviderStatus,
 )
 from app.services.assistant.assistant_service import AssistantService
+from app.services.assistant.voice_service import synthesize_voice_speech, transcribe_voice_audio
 
 router = APIRouter(prefix="/assistant", tags=["AI Personal Finance Assistant"])
 assistant_service = AssistantService()
@@ -154,3 +157,30 @@ def parse_voice_expense(
 ):
     _enforce_assistant_rate_limit(current_user.id, "voice", max_requests=30)
     return assistant_service.parse_voice_expense(db, current_user, payload.transcript)
+
+
+@router.post("/voice/transcribe", response_model=VoiceTranscribeResponse)
+async def transcribe_voice(
+    audio: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(verify_csrf),
+):
+    _enforce_assistant_rate_limit(current_user.id, "voice_stt", max_requests=20)
+    audio_bytes = await audio.read()
+    transcript, provider = transcribe_voice_audio(
+        audio_bytes,
+        filename=audio.filename or "recording.webm",
+        content_type=audio.content_type or "audio/webm",
+    )
+    return VoiceTranscribeResponse(transcript=transcript, provider=provider)
+
+
+@router.post("/voice/speak")
+def speak_assistant_text(
+    payload: VoiceSpeakRequest,
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(verify_csrf),
+):
+    _enforce_assistant_rate_limit(current_user.id, "voice_tts", max_requests=30)
+    wav_bytes = synthesize_voice_speech(payload.text)
+    return Response(content=wav_bytes, media_type="audio/wav")

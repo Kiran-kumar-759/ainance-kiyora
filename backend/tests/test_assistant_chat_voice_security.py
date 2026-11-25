@@ -370,3 +370,53 @@ def test_voice_parse_expense_requires_confirmation_and_does_not_write_ledger(ass
     # Ledger must remain untouched until user confirms in UI!
     tx_after = tc.get("/api/v1/finance/transactions").json()["total"]
     assert tx_after == tx_before
+
+
+def test_voice_transcribe_and_speak_endpoints(assistant_api_client, monkeypatch):
+    tc, created_emails = assistant_api_client
+    csrf = _register_and_login(tc, created_emails, "voice_tts")
+
+    # 1. /voice/speak produces valid WAV audio via espeak-ng
+    speak_res = tc.post(
+        "/api/v1/assistant/voice/speak",
+        json={"text": "Your monthly food expense is 1250 rupees."},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert speak_res.status_code == 200, speak_res.text
+    assert speak_res.headers["content-type"].startswith("audio/wav")
+    assert speak_res.content[:4] == b"RIFF"
+
+    # 2. /voice/transcribe returns 503 when Groq is disabled (test default)
+    stt_off = tc.post(
+        "/api/v1/assistant/voice/transcribe",
+        files={"audio": ("mic.webm", b"OggS" + b"\x00" * 128, "audio/webm")},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert stt_off.status_code == 503
+
+    # 3. /voice/transcribe succeeds with mocked Groq Whisper client
+    monkeypatch.setattr(GroqAiProvider, "is_available", lambda self: True)
+
+    class _FakeTranscription:
+        text = "Spent 450 rupees on Swiggy lunch"
+
+    class _FakeTranscriptions:
+        def create(self, **kwargs):
+            return _FakeTranscription()
+
+    class _FakeAudio:
+        transcriptions = _FakeTranscriptions()
+
+    class _FakeWhisperClient:
+        audio = _FakeAudio()
+
+    monkeypatch.setattr(GroqAiProvider, "_get_client", lambda self: _FakeWhisperClient())
+
+    stt_on = tc.post(
+        "/api/v1/assistant/voice/transcribe",
+        files={"audio": ("mic.webm", b"WEBM" + b"\x00" * 128, "audio/webm")},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert stt_on.status_code == 200, stt_on.text
+    assert stt_on.json()["transcript"] == "Spent 450 rupees on Swiggy lunch"
+    assert stt_on.json()["provider"] == "groq:whisper-large-v3-turbo"

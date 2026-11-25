@@ -92,6 +92,19 @@ function getSafeExternalUrl(rawUrl?: string | null): string | null {
   return null;
 }
 
+function cleanSpeechText(raw: string): string {
+  return raw
+    .replace(/\[\d+\]|【\d+】/g, '')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/\|[-:]+\|/g, ' ')
+    .replace(/\|/g, ', ')
+    .replace(/₹\s*/g, 'rupees ')
+    .replace(/[#*_`>~•-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 1500);
+}
+
 const STARTER_PROMPTS = [
   'How much did I spend this month and what bills or EMIs are coming up soon?',
   'Summarize my uploaded documents, receipts, or rent agreements.',
@@ -328,9 +341,16 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
 
   // Voice states
   const [isListening, setIsListening] = useState<boolean>(false);
+  const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
   const recognitionRef = useRef<SpeechRecognitionInstanceLike | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const mediaChunksRef = useRef<BlobPart[]>([]);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
+  const ttsWatchdogRef = useRef<number | null>(null);
 
   // Voice Expense Draft Modal states
   const [parsingDraft, setParsingDraft] = useState<boolean>(false);
@@ -346,11 +366,18 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
   const [categories, setCategories] = useState<FinancialCategory[]>([]);
   const [savingDraft, setSavingDraft] = useState<boolean>(false);
 
-  const speechSupported = useMemo(() => Boolean(getSpeechRecognitionCtor()), []);
-  const ttsSupported = useMemo(
-    () => typeof window !== 'undefined' && 'speechSynthesis' in window,
+  const mediaRecorderSupported = useMemo(
+    () =>
+      typeof navigator !== 'undefined' &&
+      Boolean(navigator.mediaDevices?.getUserMedia) &&
+      typeof MediaRecorder !== 'undefined',
     []
   );
+  const speechSupported = useMemo(
+    () => mediaRecorderSupported || Boolean(getSpeechRecognitionCtor()),
+    [mediaRecorderSupported]
+  );
+  const ttsSupported = useMemo(() => true, []);
 
   const loadBootstrap = useCallback(async () => {
     setLoadingInit(true);
@@ -388,6 +415,27 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
         } catch {
           // ignore
         }
+      }
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        try {
+          mediaRecorderRef.current.stop();
+        } catch {
+          // ignore
+        }
+      }
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+      }
+      if (ttsWatchdogRef.current !== null) {
+        window.clearTimeout(ttsWatchdogRef.current);
+      }
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+      if (audioUrlRef.current) {
+        URL.revokeObjectURL(audioUrlRef.current);
+        audioUrlRef.current = null;
       }
       if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
         try {
@@ -434,8 +482,14 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
 
   const handleToggleReadAloud = async (next: boolean) => {
     setReadAloudEnabled(next);
-    if (!next && ttsSupported) {
-      window.speechSynthesis.cancel();
+    if (!next) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
       setSpeakingMessageId(null);
     }
     try {
@@ -527,26 +581,142 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
     }
   };
 
+  const stopActivePlayback = useCallback(() => {
+    if (ttsWatchdogRef.current !== null) {
+      window.clearTimeout(ttsWatchdogRef.current);
+      ttsWatchdogRef.current = null;
+    }
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    if (audioUrlRef.current) {
+      URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = null;
+    }
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch {
+        // ignore
+      }
+    }
+    setSpeakingMessageId(null);
+  }, []);
+
+  const playServerAudioTts = useCallback(
+    async (cleanText: string, messageId: string) => {
+      try {
+        const wavBlob = await assistantApi.synthesizeSpeech(cleanText);
+        if (audioUrlRef.current) {
+          URL.revokeObjectURL(audioUrlRef.current);
+        }
+        const url = URL.createObjectURL(wavBlob);
+        audioUrlRef.current = url;
+        const audio = new Audio(url);
+        audioRef.current = audio;
+        setSpeakingMessageId(messageId);
+        audio.onended = () => {
+          setSpeakingMessageId(null);
+          if (audioUrlRef.current === url) {
+            URL.revokeObjectURL(url);
+            audioUrlRef.current = null;
+          }
+        };
+        audio.onerror = () => {
+          setSpeakingMessageId(null);
+          setVoiceNotice('Audio playback was blocked or failed in the browser.');
+        };
+        await audio.play();
+      } catch (err) {
+        setSpeakingMessageId(null);
+        setVoiceNotice(
+          (err as Error)?.message || 'Unable to play Read Aloud audio in this browser.'
+        );
+      }
+    },
+    []
+  );
+
   const speakText = useCallback(
     (msg: AiMessage) => {
-      if (!ttsSupported) {
-        setVoiceNotice('Browser text-to-speech is unavailable in this environment.');
+      const wasSpeakingSame = speakingMessageId === msg.id;
+      stopActivePlayback();
+      if (wasSpeakingSame) {
         return;
       }
-      window.speechSynthesis.cancel();
-      if (speakingMessageId === msg.id) {
-        setSpeakingMessageId(null);
+
+      const cleanSpeech = cleanSpeechText(msg.content);
+      if (!cleanSpeech) return;
+
+      const hasBrowserSynth =
+        typeof window !== 'undefined' &&
+        'speechSynthesis' in window &&
+        typeof SpeechSynthesisUtterance !== 'undefined';
+
+      const voices = hasBrowserSynth ? window.speechSynthesis.getVoices() : [];
+      if (!hasBrowserSynth || voices.length === 0) {
+        // On Linux Chromium/Firefox, browser speechSynthesis often has no OS voices; play server WAV via <Audio>
+        void playServerAudioTts(cleanSpeech, msg.id);
         return;
       }
-      const cleanSpeech = msg.content.replace(/\[\d+\]/g, '').replace(/\*\*/g, '');
+
+      const preferredVoice =
+        voices.find((v) => v.lang.toLowerCase().startsWith('en-in')) ||
+        voices.find((v) => v.lang.toLowerCase().startsWith('en')) ||
+        voices[0];
+
+      let started = false;
+      let fellBack = false;
+      const triggerFallback = () => {
+        if (fellBack) return;
+        fellBack = true;
+        try {
+          window.speechSynthesis.cancel();
+        } catch {
+          // ignore
+        }
+        void playServerAudioTts(cleanSpeech, msg.id);
+      };
+
       const utterance = new SpeechSynthesisUtterance(cleanSpeech);
-      utterance.lang = 'en-IN';
-      utterance.onend = () => setSpeakingMessageId(null);
-      utterance.onerror = () => setSpeakingMessageId(null);
+      if (preferredVoice) {
+        utterance.voice = preferredVoice;
+        utterance.lang = preferredVoice.lang;
+      } else {
+        utterance.lang = 'en-IN';
+      }
+      utterance.onstart = () => {
+        started = true;
+        if (ttsWatchdogRef.current !== null) {
+          window.clearTimeout(ttsWatchdogRef.current);
+          ttsWatchdogRef.current = null;
+        }
+      };
+      utterance.onend = () => {
+        if (!fellBack) setSpeakingMessageId(null);
+      };
+      utterance.onerror = () => {
+        if (!started) {
+          triggerFallback();
+        } else {
+          setSpeakingMessageId(null);
+        }
+      };
+
       setSpeakingMessageId(msg.id);
-      window.speechSynthesis.speak(utterance);
+      // Small delay avoids Chromium synchronous cancel+speak bug while falling back if speech-dispatcher hangs
+      window.setTimeout(() => {
+        if (fellBack) return;
+        window.speechSynthesis.speak(utterance);
+        ttsWatchdogRef.current = window.setTimeout(() => {
+          if (!started && !fellBack) {
+            triggerFallback();
+          }
+        }, 700);
+      }, 40);
     },
-    [speakingMessageId, ttsSupported]
+    [playServerAudioTts, speakingMessageId, stopActivePlayback]
   );
 
   const handleSendMessage = async (promptOverride?: string) => {
@@ -604,22 +774,14 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
     }
   };
 
-  const handleToggleVoiceMic = () => {
+  const startBrowserSpeechRecognition = useCallback(() => {
     const Ctor = getSpeechRecognitionCtor();
     if (!Ctor) {
       setVoiceNotice(
-        'Live browser microphone transcription is unavailable here. You can still type or paste a spoken phrase and click "Log Expense via Voice".'
+        'Microphone capture unavailable in this browser. Type or paste your phrase and click "Draft Expense" or "Send".'
       );
       return;
     }
-
-    if (isListening && recognitionRef.current) {
-      recognitionRef.current.stop();
-      setIsListening(false);
-      return;
-    }
-
-    setVoiceNotice(null);
     try {
       const rec = new Ctor();
       rec.lang = 'en-IN';
@@ -652,6 +814,110 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
       setIsListening(false);
       setVoiceNotice('Could not start browser speech recognition. Type your phrase directly instead.');
     }
+  }, []);
+
+  const handleToggleVoiceMic = async () => {
+    // Stop active recording / recognition
+    if (isListening) {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+        return;
+      }
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+        setIsListening(false);
+        return;
+      }
+    }
+
+    setVoiceNotice(null);
+
+    // Primary cross-browser path on Linux/Firefox/Chromium: record microphone audio & transcribe via Whisper
+    if (mediaRecorderSupported) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaStreamRef.current = stream;
+        mediaChunksRef.current = [];
+
+        const preferredMime =
+          typeof MediaRecorder.isTypeSupported === 'function' &&
+          MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+            ? 'audio/webm;codecs=opus'
+            : typeof MediaRecorder.isTypeSupported === 'function' &&
+              MediaRecorder.isTypeSupported('audio/webm')
+            ? 'audio/webm'
+            : '';
+
+        const recorder = preferredMime
+          ? new MediaRecorder(stream, { mimeType: preferredMime })
+          : new MediaRecorder(stream);
+
+        recorder.ondataavailable = (ev) => {
+          if (ev.data && ev.data.size > 0) {
+            mediaChunksRef.current.push(ev.data);
+          }
+        };
+
+        recorder.onstop = async () => {
+          setIsListening(false);
+          stream.getTracks().forEach((t) => t.stop());
+          mediaStreamRef.current = null;
+          mediaRecorderRef.current = null;
+
+          const audioBlob = new Blob(mediaChunksRef.current, {
+            type: recorder.mimeType || 'audio/webm',
+          });
+          mediaChunksRef.current = [];
+          if (audioBlob.size < 64) {
+            setVoiceNotice('No audio recorded. Speak after clicking Voice and click Stop Mic.');
+            return;
+          }
+
+          setIsTranscribing(true);
+          try {
+            const res = await assistantApi.transcribeVoice(audioBlob);
+            if (res.transcript) {
+              setInputText((prev) =>
+                prev.trim() ? `${prev.trim()} ${res.transcript}` : res.transcript
+              );
+            } else {
+              setVoiceNotice('No speech detected in audio. Try speaking closer to the microphone.');
+            }
+          } catch (err) {
+            const msg = (err as Error)?.message || '';
+            if (msg.toLowerCase().includes('503') || msg.toLowerCase().includes('disabled')) {
+              startBrowserSpeechRecognition();
+            } else {
+              setVoiceNotice(msg || 'Voice transcription failed. You can type your text directly.');
+            }
+          } finally {
+            setIsTranscribing(false);
+          }
+        };
+
+        mediaRecorderRef.current = recorder;
+        recorder.start();
+        setIsListening(true);
+        return;
+      } catch (err) {
+        const errName = (err as DOMException)?.name || '';
+        if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
+          setVoiceNotice(
+            'Microphone permission was denied in the browser. Allow microphone access or type your phrase directly.'
+          );
+          return;
+        }
+        if (errName === 'NotFoundError' || errName === 'DevicesNotFoundError') {
+          setVoiceNotice(
+            'No microphone device found on this system. You can still type or paste phrases and click "Draft Expense".'
+          );
+          return;
+        }
+        // Fallback to Web Speech API if MediaRecorder initialization threw another error
+      }
+    }
+
+    startBrowserSpeechRecognition();
   };
 
   const handleOpenVoiceExpenseDraft = async () => {
@@ -1284,18 +1550,24 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
                   <button
                     type="button"
                     onClick={handleToggleVoiceMic}
+                    disabled={isTranscribing}
                     title={
                       speechSupported
-                        ? 'Toggle microphone dictation'
+                        ? 'Click to start speaking, then click Stop Mic to transcribe'
                         : 'Microphone unsupported in this browser — type transcript manually'
                     }
-                    className={`px-2.5 py-1.5 rounded-xl border text-xs font-medium flex items-center space-x-1 ${
+                    className={`px-2.5 py-1.5 rounded-xl border text-xs font-medium flex items-center space-x-1 disabled:opacity-60 ${
                       isListening
                         ? 'bg-rose-600 text-white border-rose-700 animate-pulse'
                         : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
                     }`}
                   >
-                    {isListening ? (
+                    {isTranscribing ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Transcribing...</span>
+                      </>
+                    ) : isListening ? (
                       <>
                         <MicOff className="w-3.5 h-3.5" />
                         <span>Stop Mic</span>

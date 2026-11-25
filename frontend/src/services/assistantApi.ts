@@ -24,9 +24,10 @@ async function assistantRequest<T>(
   const method = (options.method || 'GET').toUpperCase();
   const { timeoutMs = 45000, ...fetchOptions } = options;
 
+  const isFormData = typeof FormData !== 'undefined' && fetchOptions.body instanceof FormData;
   const headers: Record<string, string> = {
     Accept: 'application/json',
-    'Content-Type': 'application/json',
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...(fetchOptions.headers as Record<string, string>),
   };
 
@@ -182,5 +183,58 @@ export const assistantApi = {
       method: 'POST',
       body: JSON.stringify({ transcript }),
     });
+  },
+
+  transcribeVoice(audioBlob: Blob): Promise<{ transcript: string; provider: string }> {
+    const ext = audioBlob.type.includes('ogg')
+      ? 'ogg'
+      : audioBlob.type.includes('mp4')
+      ? 'm4a'
+      : 'webm';
+    const formData = new FormData();
+    formData.append('audio', audioBlob, `recording.${ext}`);
+    return assistantRequest<{ transcript: string; provider: string }>(
+      '/api/v1/assistant/voice/transcribe',
+      {
+        method: 'POST',
+        body: formData,
+        timeoutMs: 30000,
+      }
+    );
+  },
+
+  async synthesizeSpeech(text: string): Promise<Blob> {
+    const url = `${config.apiBaseUrl}/api/v1/assistant/voice/speak`;
+    let token = getCsrfFromCookie();
+    if (!isValidCsrfToken(token)) {
+      token = await fetchCsrfToken(true);
+    }
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (token) headers['X-CSRF-Token'] = token;
+
+    let response = await fetch(url, {
+      method: 'POST',
+      headers,
+      credentials: 'include',
+      body: JSON.stringify({ text }),
+    });
+    if (response.status === 403) {
+      const fresh = await fetchCsrfToken(true);
+      if (fresh) {
+        headers['X-CSRF-Token'] = fresh;
+        response = await fetch(url, {
+          method: 'POST',
+          headers,
+          credentials: 'include',
+          body: JSON.stringify({ text }),
+        });
+      }
+    }
+    if (!response.ok) {
+      throw new Error(`Speech synthesis failed (${response.status}).`);
+    }
+    return response.blob();
   },
 };
