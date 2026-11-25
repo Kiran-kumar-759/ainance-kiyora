@@ -21,6 +21,7 @@ class AccountRepository:
         stmt = select(FinancialAccount).where(
             FinancialAccount.id == account_id,
             FinancialAccount.user_id == user_id,
+            FinancialAccount.status != "disconnected",
         )
         return db.execute(stmt).scalar_one_or_none()
 
@@ -41,7 +42,19 @@ class AccountRepository:
         stmt = select(FinancialAccount).where(FinancialAccount.user_id == user_id)
         if not include_archived:
             stmt = stmt.where(FinancialAccount.status == "active")
+        else:
+            stmt = stmt.where(FinancialAccount.status.in_(["active", "archived"]))
         stmt = stmt.order_by(FinancialAccount.created_at.asc())
+        return list(db.execute(stmt).scalars().all())
+
+    def list_demo_accounts_by_institution(
+        self, db: Session, user_id: uuid.UUID, institution_name: str
+    ) -> list[FinancialAccount]:
+        stmt = select(FinancialAccount).where(
+            FinancialAccount.user_id == user_id,
+            FinancialAccount.source == "demo_bank",
+            FinancialAccount.institution_name == institution_name,
+        )
         return list(db.execute(stmt).scalars().all())
 
     def update(self, db: Session, account: FinancialAccount) -> FinancialAccount:

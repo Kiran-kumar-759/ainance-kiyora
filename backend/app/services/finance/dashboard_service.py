@@ -5,7 +5,7 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.finance import FinancialTransaction
+from app.models.finance import FinancialAccount, FinancialTransaction
 from app.models.user import User
 from app.repositories.finance.account_repository import AccountRepository
 from app.repositories.finance.transaction_repository import TransactionRepository
@@ -57,25 +57,31 @@ class DashboardService:
 
         net_financial_position = total_assets - total_liabilities
 
-        # Period Income
-        income_stmt = select(
-            func.coalesce(func.sum(FinancialTransaction.amount), Decimal("0.00"))
-        ).where(
-            FinancialTransaction.user_id == user.id,
-            FinancialTransaction.transaction_type == "income",
-            FinancialTransaction.transaction_date >= start_date,
-            FinancialTransaction.transaction_date <= end_date,
+        # Period Income (exclude disconnected demo bank accounts)
+        income_stmt = (
+            select(func.coalesce(func.sum(FinancialTransaction.amount), Decimal("0.00")))
+            .join(FinancialAccount, FinancialTransaction.account_id == FinancialAccount.id)
+            .where(
+                FinancialTransaction.user_id == user.id,
+                FinancialTransaction.transaction_type == "income",
+                FinancialTransaction.transaction_date >= start_date,
+                FinancialTransaction.transaction_date <= end_date,
+                FinancialAccount.status != "disconnected",
+            )
         )
         total_income = db.execute(income_stmt).scalar() or Decimal("0.00")
 
-        # Period Expense
-        expense_stmt = select(
-            func.coalesce(func.sum(FinancialTransaction.amount), Decimal("0.00"))
-        ).where(
-            FinancialTransaction.user_id == user.id,
-            FinancialTransaction.transaction_type == "expense",
-            FinancialTransaction.transaction_date >= start_date,
-            FinancialTransaction.transaction_date <= end_date,
+        # Period Expense (exclude disconnected demo bank accounts)
+        expense_stmt = (
+            select(func.coalesce(func.sum(FinancialTransaction.amount), Decimal("0.00")))
+            .join(FinancialAccount, FinancialTransaction.account_id == FinancialAccount.id)
+            .where(
+                FinancialTransaction.user_id == user.id,
+                FinancialTransaction.transaction_type == "expense",
+                FinancialTransaction.transaction_date >= start_date,
+                FinancialTransaction.transaction_date <= end_date,
+                FinancialAccount.status != "disconnected",
+            )
         )
         total_expenses = db.execute(expense_stmt).scalar() or Decimal("0.00")
 

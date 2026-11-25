@@ -188,7 +188,11 @@ export const BankingPage: React.FC<BankingPageProps> = ({ onNavigate }) => {
 
   const handleDisconnect = async (connId: string) => {
     if (disconnectingId) return;
-    if (confirm('Disconnect this simulated banking connection? Existing imported records will be preserved.')) {
+    if (
+      confirm(
+        'Disconnect this simulated banking connection? Its accounts and transactions will be removed from your Dashboard, Accounts, and Transactions views until reconnected.'
+      )
+    ) {
       setDisconnectingId(connId);
       setError(null);
       setSyncMessage(null);
@@ -196,7 +200,7 @@ export const BankingPage: React.FC<BankingPageProps> = ({ onNavigate }) => {
         const res = await financeApi.disconnectBankingConnection(connId);
         await loadBankingData();
         setSyncMessage(
-          `Disconnected ${res.institution_name}. Existing imported accounts and transaction history have been preserved.`
+          `Disconnected ${res.institution_name}. Its accounts and transactions are no longer reflected in your active workspace.`
         );
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Failed to disconnect.';
@@ -469,7 +473,7 @@ export const BankingPage: React.FC<BankingPageProps> = ({ onNavigate }) => {
                 <ul className="list-disc pl-4 space-y-1 text-gray-600">
                   <li>No real bank account or credentials will be accessed.</li>
                   <li>All imported records will be labeled as &ldquo;Demo Bank&rdquo;.</li>
-                  <li>You can disconnect at any time without losing historical ledger records.</li>
+                  <li>Disconnecting removes this bank&rsquo;s accounts and transactions from active views until reconnected.</li>
                 </ul>
               </div>
 

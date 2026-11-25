@@ -392,22 +392,38 @@ def test_real_multi_session_demo_banking_workflow(live_client):
     assert runs[0]["transactions_synced"] == 0
     assert runs[1]["transactions_synced"] == 4
 
-    # 7. Disconnect preserves history and blocks future sync
+    # 7. Disconnect hides accounts/transactions from active accounts, summary, dashboard, and transactions,
+    #    while blocking future sync. Reconnecting and re-importing restores cleanly without duplicates.
     disc = tc.post(
         f"/api/v1/banking/connections/{conn_id}/disconnect",
         headers={"X-CSRF-Token": csrf_a},
     )
     assert disc.status_code == 200
     assert disc.json()["status"] == "disconnected"
-    assert disc.json()["connected_accounts_count"] == 1
+    assert disc.json()["connected_accounts_count"] == 0
 
     sync_blocked = tc.post(
         f"/api/v1/banking/connections/{conn_id}/sync",
         headers={"X-CSRF-Token": csrf_a},
     )
     assert sync_blocked.status_code == 400
-    assert len(tc.get("/api/v1/finance/accounts").json()) == 1
-    assert tc.get("/api/v1/finance/transactions?source=demo_bank").json()["total"] == 4
+
+    # Disconnected accounts & transactions do NOT reflect anywhere in active views
+    assert tc.get("/api/v1/finance/accounts").json() == []
+    assert tc.get("/api/v1/finance/accounts?include_archived=true").json() == []
+    assert tc.get(f"/api/v1/finance/accounts/{imported_acc_id}").status_code == 404
+    summary_after_disc = tc.get("/api/v1/finance/accounts/summary").json()
+    assert summary_after_disc["total_accounts"] == 0
+    assert Decimal(str(summary_after_disc["total_assets"])) == Decimal("0.00")
+
+    dash_after_disc = tc.get("/api/v1/finance/dashboard?period=all_time").json()
+    assert dash_after_disc["account_count"] == 0
+    assert Decimal(str(dash_after_disc["total_assets"])) == Decimal("0.00")
+    assert Decimal(str(dash_after_disc["total_income"])) == Decimal("0.00")
+    assert Decimal(str(dash_after_disc["total_expenses"])) == Decimal("0.00")
+    assert dash_after_disc["recent_transactions"] == []
+
+    assert tc.get("/api/v1/finance/transactions?source=demo_bank").json()["total"] == 0
 
     # 8. Cross-user isolation: User B cannot touch User A's accounts or connection
     tc_b = TestClient(tc.app, raise_server_exceptions=False)
@@ -449,6 +465,27 @@ def test_real_multi_session_demo_banking_workflow(live_client):
         assert conn_row.status == "disconnected"
     finally:
         verify_db.close()
+
+    # 9. Reconnecting and re-importing reactivates the account cleanly without duplicates
+    reconn = tc.post(
+        "/api/v1/banking/connections/demo",
+        json={"provider_id": "demo_national_bank", "consent_given": True},
+        headers={"X-CSRF-Token": csrf_a},
+    )
+    assert reconn.status_code == 200
+    assert reconn.json()["status"] == "connected"
+    disc_reconn = tc.get(f"/api/v1/banking/connections/{conn_id}/accounts").json()
+    assert all(a["already_imported"] is False for a in disc_reconn)
+
+    reimport = tc.post(
+        f"/api/v1/banking/connections/{conn_id}/accounts/import",
+        json={"account_ids": ["dnb_sav_001"]},
+        headers={"X-CSRF-Token": csrf_a},
+    )
+    assert reimport.status_code == 200
+    assert len(reimport.json()) == 1
+    assert len(tc.get("/api/v1/finance/accounts").json()) == 1
+    assert tc.get("/api/v1/finance/transactions?source=demo_bank").json()["total"] == 4
 
 
 def test_negative_balance_prevention_across_transactions_and_transfers(live_client):

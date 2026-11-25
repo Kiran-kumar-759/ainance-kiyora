@@ -51,12 +51,15 @@
 | :--- | :--- |
 | `backend/app/schemas/finance/account.py` | Added blank-name `@field_validator`, `decimal_places=2`, and upper/lower `NUMERIC(19,2)` bounds on `opening_balance`. |
 | `backend/app/schemas/finance/banking.py` | Added `BankingSyncRunResponse` schema for sync history API responses. |
-| `backend/app/repositories/finance/account_repository.py` | Added `get_active_by_name_and_type` helper for duplicate active manual account detection. |
+| `backend/app/repositories/finance/account_repository.py` | Added `get_active_by_name_and_type` and `list_demo_accounts_by_institution`, and excluded `"disconnected"` demo accounts from `get_by_id` and `list_by_user`. |
+| `backend/app/repositories/finance/transaction_repository.py` | Excluded transactions linked to `"disconnected"` demo bank accounts from `get_by_id` and `list_transactions`. |
+| `backend/app/repositories/finance/transfer_repository.py` | Excluded transfers involving `"disconnected"` demo bank accounts from `get_by_id` and `list_by_user`. |
+| `backend/app/services/finance/dashboard_service.py` | Excluded `"disconnected"` demo bank accounts from Dashboard period income and expense aggregations. |
 | `backend/app/services/finance/account_service.py` | Added atomic `db.commit()` / `db.rollback()`, `commit: bool = True` support, HTTP 409 duplicate check on manual creation, and non-negative balance guard on `update_opening_balance`. |
 | `backend/app/services/finance/category_service.py` | Added atomic `db.commit()` / `db.rollback()` across seeding and custom category CRUD (`commit: bool = True` on `seed_default_categories`). |
 | `backend/app/services/finance/transaction_service.py` | Added atomic `db.commit()` / `db.rollback()`, `commit: bool = True` support, and negative-balance prevention on manual expenses, edits (`amount`/`date` changes), and income deletions. |
 | `backend/app/services/finance/transfer_service.py` | Added atomic `db.commit()` / `db.rollback()` and negative-balance prevention on outgoing transfers from asset accounts and on transfer reversals. |
-| `backend/app/services/banking/banking_service.py` | Fixed atomic multi-account import and multi-transaction sync (`commit=False` on sub-calls, single outer commit/rollback), added unknown external ID HTTP 400 validation, duplicate ID deduplication, consistent `connected_accounts_count`, and `list_sync_runs()`. |
+| `backend/app/services/banking/banking_service.py` | Fixed atomic multi-account import and multi-transaction sync (`commit=False` on sub-calls, single outer commit/rollback), added unknown external ID HTTP 400 validation, duplicate ID deduplication, consistent `connected_accounts_count`, `list_sync_runs()`, and cascading `"disconnected"` status cleanup on disconnect with clean reactivation on re-import. |
 | `backend/app/api/routes/banking/connections.py` | Added `GET /api/v1/banking/connections/{connection_id}/sync-runs` endpoint. |
 | `backend/tests/test_phase_2_1_regression.py` | Added 4 real multi-session PostgreSQL integration tests against `pfm_test` (using independent `TestingSessionLocal` per HTTP request). |
 | `frontend/src/types/finance.ts` | Added `BankingSyncRun` TypeScript interface. |

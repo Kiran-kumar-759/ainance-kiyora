@@ -199,19 +199,26 @@ class BankingService:
                     detail=f"Unknown provider account identifier: {ext_id}",
                 )
 
-        existing_accounts = self.account_repo.list_by_user(db, user.id, include_archived=True)
-        imported_identifiers = {
-            a.account_identifier
-            for a in existing_accounts
-            if a.source == "demo_bank" and a.institution_name == conn.institution_name
+        all_institution_accounts = self.account_repo.list_demo_accounts_by_institution(
+            db, user.id, conn.institution_name
+        )
+        accounts_by_identifier = {
+            a.account_identifier: a for a in all_institution_accounts if a.account_identifier
         }
 
         imported: list[AccountResponse] = []
         try:
             for ext_id in unique_ids:
                 acc_info = discovered_map[ext_id]
-                if acc_info.masked_account_number in imported_identifiers:
-                    # Idempotent skip if already imported
+                existing_acc = accounts_by_identifier.get(acc_info.masked_account_number)
+                if existing_acc:
+                    if existing_acc.status != "disconnected":
+                        # Already actively imported - idempotent skip
+                        continue
+                    # Reconnect previously disconnected account
+                    existing_acc.status = "active"
+                    self.account_repo.update(db, existing_acc)
+                    imported.append(AccountResponse.model_validate(existing_acc))
                     continue
 
                 create_req = AccountCreateRequest(
@@ -225,7 +232,6 @@ class BankingService:
                 new_acc = self.account_service.create_account(
                     db=db, user=user, req=create_req, source="demo_bank", commit=False
                 )
-                imported_identifiers.add(acc_info.masked_account_number)
                 imported.append(new_acc)
 
             db.commit()
@@ -383,6 +389,17 @@ class BankingService:
         try:
             conn.status = "disconnected"
             self.banking_repo.update_connection(db, conn)
+
+            # Deactivate all demo accounts belonging to this disconnected institution
+            # so they no longer reflect on Dashboard, Accounts, or Transactions.
+            demo_accounts = self.account_repo.list_demo_accounts_by_institution(
+                db, user.id, conn.institution_name
+            )
+            for acc in demo_accounts:
+                if acc.status != "disconnected":
+                    acc.status = "disconnected"
+                    self.account_repo.update(db, acc)
+
             db.commit()
             db.refresh(conn)
             return self._to_connection_response(db, user, conn)

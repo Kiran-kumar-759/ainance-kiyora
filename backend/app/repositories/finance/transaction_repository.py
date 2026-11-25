@@ -4,7 +4,7 @@ import uuid
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
-from app.models.finance import FinancialTransaction
+from app.models.finance import FinancialAccount, FinancialTransaction
 
 
 class TransactionRepository:
@@ -27,6 +27,7 @@ class TransactionRepository:
             .where(
                 FinancialTransaction.id == transaction_id,
                 FinancialTransaction.user_id == user_id,
+                FinancialTransaction.account.has(FinancialAccount.status != "disconnected"),
             )
         )
         return db.execute(stmt).scalar_one_or_none()
@@ -60,7 +61,10 @@ class TransactionRepository:
         page: int = 1,
         page_size: int = 20,
     ) -> tuple[list[FinancialTransaction], int]:
-        base_stmt = select(FinancialTransaction).where(FinancialTransaction.user_id == user_id)
+        base_stmt = select(FinancialTransaction).where(
+            FinancialTransaction.user_id == user_id,
+            FinancialTransaction.account.has(FinancialAccount.status != "disconnected"),
+        )
 
         if account_id:
             base_stmt = base_stmt.where(FinancialTransaction.account_id == account_id)

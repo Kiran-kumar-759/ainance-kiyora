@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
-from app.models.finance import FinancialTransfer
+from app.models.finance import FinancialAccount, FinancialTransfer
 
 
 class TransferRepository:
@@ -26,6 +26,10 @@ class TransferRepository:
             .where(
                 FinancialTransfer.id == transfer_id,
                 FinancialTransfer.user_id == user_id,
+                FinancialTransfer.source_account.has(FinancialAccount.status != "disconnected"),
+                FinancialTransfer.destination_account.has(
+                    FinancialAccount.status != "disconnected"
+                ),
             )
         )
         return db.execute(stmt).scalar_one_or_none()
@@ -39,7 +43,13 @@ class TransferRepository:
                 joinedload(FinancialTransfer.source_account),
                 joinedload(FinancialTransfer.destination_account),
             )
-            .where(FinancialTransfer.user_id == user_id)
+            .where(
+                FinancialTransfer.user_id == user_id,
+                FinancialTransfer.source_account.has(FinancialAccount.status != "disconnected"),
+                FinancialTransfer.destination_account.has(
+                    FinancialAccount.status != "disconnected"
+                ),
+            )
             .order_by(FinancialTransfer.transfer_date.desc(), FinancialTransfer.created_at.desc())
             .limit(limit)
         )
