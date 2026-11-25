@@ -212,8 +212,12 @@ class BillService:
         self._validate_optional_account(db, user, req.linked_account_id)
 
         current_amt = req.current_amount
-        if not req.is_variable_amount and current_amt is None:
-            current_amt = req.expected_amount
+        expected_amt = req.expected_amount
+        if not req.is_variable_amount:
+            if current_amt is None:
+                current_amt = expected_amt
+            if expected_amt is None:
+                expected_amt = current_amt
 
         channels_dict = req.notification_channels.model_dump()
 
@@ -243,7 +247,7 @@ class BillService:
                     custom_interval_days=req.custom_interval_days,
                     anchor_day=req.due_date.day,
                     is_variable_amount=req.is_variable_amount,
-                    expected_amount=req.expected_amount,
+                    expected_amount=expected_amt,
                     currency=req.currency.upper(),
                     start_date=req.due_date,
                     end_date=req.end_date,
@@ -272,7 +276,7 @@ class BillService:
                 bill_type=req.bill_type,
                 frequency=req.frequency,
                 is_variable_amount=req.is_variable_amount,
-                expected_amount=req.expected_amount,
+                expected_amount=expected_amt,
                 current_amount=current_amt,
                 currency=req.currency.upper(),
                 billing_period_start=p_start,
@@ -325,7 +329,13 @@ class BillService:
 
         responses = [self._bill_to_response(b, user_today) for b in raw_bills]
 
-        if status_filter:
+        if status_filter == "active":
+            responses = [
+                b
+                for b in responses
+                if b.derived_status in {"upcoming", "due_soon", "overdue", "partially_paid"}
+            ]
+        elif status_filter:
             responses = [b for b in responses if b.derived_status == status_filter]
 
         if sort_by == "due_date_desc":
@@ -440,6 +450,11 @@ class BillService:
             bill.is_variable_amount = req.is_variable_amount
         if req.expected_amount is not None:
             bill.expected_amount = req.expected_amount
+            if bill.parent_schedule_id and bill.stored_status != "paid":
+                sched = self.bill_repo.get_schedule(db, bill.parent_schedule_id, user.id)
+                if sched and sched.is_active:
+                    sched.expected_amount = req.expected_amount
+                    db.add(sched)
         if req.current_amount is not None:
             bill.current_amount = req.current_amount
         if req.due_date is not None:

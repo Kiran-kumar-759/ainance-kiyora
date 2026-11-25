@@ -62,7 +62,7 @@ export const BillsPage: React.FC<BillsPageProps> = () => {
 
   // Filters
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('active');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [sortBy, setSortBy] = useState('due_date_asc');
@@ -96,7 +96,7 @@ export const BillsPage: React.FC<BillsPageProps> = () => {
           : activeTab === 'paid'
             ? 'paid'
             : activeTab === 'upcoming'
-              ? statusFilter || undefined
+              ? undefined
               : statusFilter || undefined;
 
       const [ov, billsRes, schedRes, payRes, notifRes] = await Promise.all([
@@ -343,7 +343,7 @@ export const BillsPage: React.FC<BillsPageProps> = () => {
       {/* Tabs */}
       <div className="border-b border-gray-200 flex flex-wrap gap-1">
         {[
-          { id: 'all', label: 'All Bills' },
+          { id: 'all', label: 'Active Bills' },
           { id: 'upcoming', label: 'Upcoming & Due Soon' },
           { id: 'overdue', label: `Overdue (${overview?.overdue_count ?? 0})` },
           { id: 'paid', label: 'Paid History' },
@@ -439,7 +439,8 @@ export const BillsPage: React.FC<BillsPageProps> = () => {
                 }}
                 className="px-2.5 py-1.5 border border-gray-300 rounded-lg bg-white"
               >
-                <option value="">Active Statuses</option>
+                <option value="active">Active Unpaid Bills</option>
+                <option value="">All Statuses (Incl. Paid)</option>
                 <option value="upcoming">Upcoming</option>
                 <option value="due_soon">Due Soon</option>
                 <option value="overdue">Overdue</option>
@@ -540,16 +541,38 @@ export const BillsPage: React.FC<BillsPageProps> = () => {
                             <span className="text-amber-700 italic font-semibold">
                               Variable (Pending)
                             </span>
+                          ) : b.derived_status === 'paid' ? (
+                            <div>
+                              <span className="text-emerald-700">
+                                {formatINR(
+                                  b.amount_paid_total && Number(b.amount_paid_total) > 0
+                                    ? b.amount_paid_total
+                                    : b.current_amount ?? b.expected_amount
+                                )}
+                              </span>
+                              <div className="text-[10px] font-normal text-gray-400">Paid</div>
+                            </div>
                           ) : (
                             formatINR(b.remaining_due ?? b.current_amount ?? b.expected_amount)
                           )}
                         </td>
                         <td className="py-3 px-3 whitespace-nowrap">{renderStatusBadge(b)}</td>
                         <td className="py-3 px-3 text-[11px] text-gray-500">
-                          {b.reminder_enabled ? (
+                          {b.derived_status === 'paid' ? (
+                            <span className="text-gray-400">Stopped (Paid)</span>
+                          ) : b.derived_status === 'archived' ? (
+                            <span className="text-gray-400">Archived</span>
+                          ) : b.reminder_enabled ? (
                             <span className="inline-flex items-center space-x-1 text-emerald-700">
                               <Clock className="w-3 h-3" />
-                              <span>{b.reminders.length} active</span>
+                              <span>
+                                {
+                                  b.reminders.filter(
+                                    (r) => r.is_enabled && r.delivery_status === 'pending'
+                                  ).length
+                                }{' '}
+                                scheduled
+                              </span>
                             </span>
                           ) : (
                             'Off'

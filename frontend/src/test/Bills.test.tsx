@@ -247,7 +247,11 @@ describe('Phase 5 Bills, Payments & Reminders Frontend', () => {
     fireEvent.change(screen.getByPlaceholderText(/BESCOM Electricity, Airtel Fiber/i), {
       target: { value: 'Municipal Property Tax' },
     });
-    fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '3500.00' } });
+    // Simulate keystroke-by-keystroke typing (6 -> 60 -> 600) to confirm expected_amount stays synced
+    const amtInput = screen.getByPlaceholderText('0.00');
+    fireEvent.change(amtInput, { target: { value: '6' } });
+    fireEvent.change(amtInput, { target: { value: '60' } });
+    fireEvent.change(amtInput, { target: { value: '600' } });
 
     fireEvent.click(screen.getByText('Create Bill'));
 
@@ -256,6 +260,8 @@ describe('Phase 5 Bills, Payments & Reminders Frontend', () => {
         expect.objectContaining({
           bill_name: 'Municipal Property Tax',
           bill_type: 'one_time',
+          current_amount: '600',
+          expected_amount: '600',
         })
       );
     });

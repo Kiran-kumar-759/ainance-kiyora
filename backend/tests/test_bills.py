@@ -417,9 +417,13 @@ def test_payment_ledger_integration_idempotency_rollback_and_analytics_consisten
     assert pay_dup.status_code == 200
     assert len(pay_dup.json()["payments"]) == 1
 
-    # Verify next recurring occurrence was auto-created cleanly
+    # Verify next recurring occurrence was auto-created cleanly, and status_filter='active' hides paid repeat rows
     bills_all = tc.get("/api/v1/bills").json()["items"]
     assert len(bills_all) == 2
+    active_only = tc.get("/api/v1/bills", params={"status_filter": "active"}).json()
+    assert active_only["total"] == 1
+    assert active_only["items"][0]["derived_status"] in {"upcoming", "due_soon"}
+    assert Decimal(active_only["items"][0]["expected_amount"]) == Decimal("3200.00")
 
     # Check account balance decreased accurately (10000 - 3200 = 6800) and transaction source='bill_payment'
     tx_list = tc.get("/api/v1/finance/transactions", params={"source": "bill_payment"}).json()
@@ -628,15 +632,15 @@ def test_reminders_dispatch_email_sms_honesty_mocked_delivery_retries_and_notifi
     assert r.status_code == 201, r.text
     bill = r.json()
 
-    # 1. With SMTP_ENABLED=False and SMS_ENABLED=False, in_app delivers while email & sms honestly report 'unavailable' -> partial
+    # 1. With SMTP_ENABLED=False and SMS_ENABLED=False, overdue bill gets 1 deduplicated day-0 reminder & in_app delivers cleanly
     monkeypatch.setattr(settings, "SMTP_ENABLED", False)
     monkeypatch.setattr(settings, "SMS_ENABLED", False)
     p1 = tc.post("/api/v1/bills/reminders/process", headers=headers)
     assert p1.status_code == 200, p1.text
     res1 = p1.json()
-    assert res1["processed_count"] == 2
-    assert res1["partial_count"] == 2
-    assert res1["notifications_created"] == 2
+    assert res1["processed_count"] == 1
+    assert res1["partial_count"] == 1
+    assert res1["notifications_created"] == 1
     assert res1["email_configured"] is False
     assert res1["sms_configured"] is False
 
@@ -651,15 +655,15 @@ def test_reminders_dispatch_email_sms_honesty_mocked_delivery_retries_and_notifi
     assert outcomes["email"]["status"] == "unavailable"
     assert outcomes["sms"]["status"] == "unavailable"
 
-    # Notifications persisted & unread -> mark one & mark all read
+    # Notifications persisted & unread -> mark all read
     notifs = tc.get("/api/v1/notifications").json()
-    assert notifs["unread_count"] == 2
+    assert notifs["unread_count"] == 1
     n_id = notifs["items"][0]["id"]
     mark1 = tc.patch(f"/api/v1/notifications/{n_id}/read", headers=headers)
     assert mark1.status_code == 200 and mark1.json()["is_read"] is True
-    assert tc.get("/api/v1/notifications/unread-count").json()["unread_count"] == 1
+    assert tc.get("/api/v1/notifications/unread-count").json()["unread_count"] == 0
     mark_all = tc.post("/api/v1/notifications/read-all", headers=headers)
-    assert mark_all.status_code == 200 and mark_all.json()["marked_read"] == 1
+    assert mark_all.status_code == 200 and mark_all.json()["marked_read"] == 0
 
     # 2. Due-date update cancels old reminders & schedules fresh pending reminders
     new_bill_res = tc.post(

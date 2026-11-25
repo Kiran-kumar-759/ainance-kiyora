@@ -389,7 +389,7 @@ export const AppShell: React.FC<AppShellProps> = ({
         </div>
         <div className="flex items-center justify-between">
           <span className="text-slate-400">Active Phase</span>
-          <span className="text-emerald-400 font-medium text-[11px]">Phase 1 (Auth)</span>
+          <span className="text-emerald-400 font-medium text-[11px]">Phase 5 (Bills)</span>
         </div>
       </div>
     </div>
@@ -439,10 +439,12 @@ export const AppShell: React.FC<AppShellProps> = ({
             </button>
             <div>
               <div className="flex items-center space-x-2">
-                <h1 className="text-base sm:text-lg font-semibold text-slate-900 tracking-tight">
+                <h1 className="text-base sm:text-lg font-semibold text-slate-900 tracking-tight whitespace-nowrap">
                   {config.appTitle}
                 </h1>
-                <Badge variant="info">Phase 1: Auth & User Mgmt</Badge>
+                <Badge variant="info" className="whitespace-nowrap">
+                  Phase 5: Bills &amp; Reminders
+                </Badge>
               </div>
               <p className="text-xs text-slate-500 hidden sm:block">
                 Multi-User SaaS Architecture • India Locale (INR, en-IN, Asia/Kolkata)

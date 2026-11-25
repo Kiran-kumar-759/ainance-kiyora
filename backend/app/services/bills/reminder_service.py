@@ -70,10 +70,18 @@ class ReminderService:
             db.flush()
             return
 
-        desired_offsets = sorted(
+        user_today = resolve_user_today(user_timezone)
+        raw_offsets = sorted(
             {int(d) for d in (bill.reminder_days_before or [7, 3, 1, 0]) if 0 <= int(d) <= 60},
             reverse=True,
         )
+        if bill.due_date < user_today:
+            # Already overdue: schedule a single day-0 overdue reminder rather than backdated offsets
+            desired_offsets = [0]
+        else:
+            desired_offsets = [
+                d for d in raw_offsets if (bill.due_date - dt.timedelta(days=d)) >= user_today
+            ] or [0]
         desired_keys = {
             f"{bill.id}:{offset}:{bill.due_date.isoformat()}": offset
             for offset in desired_offsets
@@ -201,9 +209,9 @@ class ReminderService:
             any_failed = False
             any_unavailable = False
 
-            # 1. In-app notification channel
+            # 1. In-app notification channel (dedupe once per bill, type & calendar day in user timezone)
             if "in_app" in channels:
-                dedupe = f"rem:{rem.idempotency_key}"
+                dedupe = f"bill-alert:{bill.id}:{user_today.isoformat()}:{notif_type}"
                 existing_notif = self.bill_repo.get_notification_by_dedupe(db, dedupe)
                 if not existing_notif:
                     self.bill_repo.create_notification(

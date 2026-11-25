@@ -94,6 +94,7 @@ export const BillFormModal: React.FC<BillFormModalProps> = ({
   const [emailChannel, setEmailChannel] = useState(false);
   const [smsChannel, setSmsChannel] = useState(false);
   const [docFile, setDocFile] = useState<File | null>(null);
+  const [expectedDirty, setExpectedDirty] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -110,8 +111,11 @@ export const BillFormModal: React.FC<BillFormModalProps> = ({
       setBillType(editingBill.bill_type);
       setFrequency(editingBill.frequency || 'monthly');
       setIsVariable(editingBill.is_variable_amount);
-      setExpectedAmount(editingBill.expected_amount ? String(editingBill.expected_amount) : '');
-      setCurrentAmount(editingBill.current_amount ? String(editingBill.current_amount) : '');
+      const expStr = editingBill.expected_amount ? String(editingBill.expected_amount) : '';
+      const curStr = editingBill.current_amount ? String(editingBill.current_amount) : '';
+      setExpectedAmount(expStr);
+      setCurrentAmount(curStr);
+      setExpectedDirty(Boolean(expStr && curStr && expStr !== curStr));
       setDueDate(editingBill.due_date);
       setEndDate('');
       setPreferredMethod((editingBill.preferred_payment_method as PaymentMethod) || 'upi');
@@ -134,6 +138,7 @@ export const BillFormModal: React.FC<BillFormModalProps> = ({
       setIsVariable(false);
       setExpectedAmount('');
       setCurrentAmount('');
+      setExpectedDirty(false);
       setDueDate(new Date().toISOString().split('T')[0]);
       setEndDate('');
       setPreferredMethod('upi');
@@ -405,9 +410,10 @@ export const BillFormModal: React.FC<BillFormModalProps> = ({
                 placeholder={isVariable ? 'Leave blank if unknown yet' : '0.00'}
                 value={currentAmount}
                 onChange={(e) => {
-                  setCurrentAmount(e.target.value);
-                  if (!isVariable && !expectedAmount) {
-                    setExpectedAmount(e.target.value);
+                  const val = e.target.value;
+                  setCurrentAmount(val);
+                  if (!isVariable && !expectedDirty) {
+                    setExpectedAmount(val);
                   }
                 }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono"
@@ -424,7 +430,11 @@ export const BillFormModal: React.FC<BillFormModalProps> = ({
                 min="0.01"
                 placeholder="Optional estimate"
                 value={expectedAmount}
-                onChange={(e) => setExpectedAmount(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setExpectedAmount(val);
+                  setExpectedDirty(val.trim().length > 0 && val !== currentAmount);
+                }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono"
               />
             </div>
