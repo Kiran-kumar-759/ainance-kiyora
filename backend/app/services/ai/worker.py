@@ -5,8 +5,10 @@ from concurrent.futures import ThreadPoolExecutor
 from app.core.config import settings
 from app.db.session import SessionLocal
 from app.repositories.intelligence.intelligence_repository import IntelligenceRepository
+from app.schemas.forecasting import GenerateForecastRequest
 from app.schemas.intelligence import IntelligenceRunRequest
 from app.services.ai.intelligence_service import IntelligenceService
+from app.services.forecasting.forecast_service import ForecastService
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +22,7 @@ class AiIntelligenceWorker:
     def __init__(self):
         self._repo = IntelligenceRepository()
         self._service = IntelligenceService()
+        self._forecast_service = ForecastService()
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ai-worker")
         self._task: asyncio.Task | None = None
         self._stop_event = asyncio.Event()
@@ -32,12 +35,22 @@ class AiIntelligenceWorker:
                 if job is None:
                     break
                 try:
-                    self._service.execute_full_pipeline_for_user(
-                        db,
-                        job.user_id,
-                        IntelligenceRunRequest(reanalyze_all=False, use_ai_fallback=True, train_model=True),
-                        existing_job=job,
-                    )
+                    if job.job_type == "forecast_generation":
+                        self._forecast_service.generate_forecast_for_user(
+                            db,
+                            job.user_id,
+                            GenerateForecastRequest(horizon_days=30, force_refresh=True),
+                            existing_job=job,
+                        )
+                    else:
+                        self._service.execute_full_pipeline_for_user(
+                            db,
+                            job.user_id,
+                            IntelligenceRunRequest(
+                                reanalyze_all=False, use_ai_fallback=True, train_model=True
+                            ),
+                            existing_job=job,
+                        )
                     processed += 1
                 except Exception as exc:
                     logger.warning("AI job %s failed: %s", job.id, type(exc).__name__)

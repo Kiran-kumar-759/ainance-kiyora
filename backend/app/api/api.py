@@ -6,6 +6,7 @@ from app.api.routes import (
     bills,
     documents,
     email,
+    forecasting,
     imports,
     intelligence,
     loans,
@@ -48,3 +49,4 @@ api_router.include_router(loans.router)
 api_router.include_router(documents.router)
 api_router.include_router(email.router)
 api_router.include_router(intelligence.router)
+api_router.include_router(forecasting.router)

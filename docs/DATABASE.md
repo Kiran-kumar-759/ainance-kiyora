@@ -626,3 +626,13 @@ Added in Alembic revision **`01139757d108_create_documents_ocr_email_ingestion_.
 - `spending_anomalies`: Deduplicated (`(user_id, dedupe_key)` unique) statistical deviations with observed/baseline amounts, `deviation_pct`, `severity`, `detection_method`, plain-English explanation, and `review_status`.
 - `financial_insights`: Deduplicated (`(user_id, dedupe_key)` unique) evidence-backed spending insights with `supporting_data`, `calculation_method`, `provider_name`, `confidence`, and `status` (`new`, `read`, `dismissed`).
 - `ai_processing_jobs`: Durable PostgreSQL job queue with partial unique index `uq_ai_active_job_per_user` on `(user_id, job_type)` where `status IN ('queued', 'processing')`, claimed via `FOR UPDATE SKIP LOCKED`.
+
+
+## Phase 9 — Financial Forecasting Tables (Migration `786d5cf50c4f`)
+
+- `financial_forecasts`: Persisted user forecast header (`horizon_days`, `as_of_date`, `data_cutoff_date`, `timezone`, `method`, `confidence_label`, `confidence_score`, `observation_count`, `historical_days_covered`, `status`, `assumptions`, `limitations`, `summary_payload`, `input_signature`).
+- `forecast_values`: Normalized trajectory and projection rows linked via `forecast_id` (`series_type`: `cashflow_monthly`, `category`, `commitment`).
+- `forecast_explanations`: Evidence-backed narrative explanations referencing supporting transaction, category, bill, subscription, loan, and Phase 8 anomaly IDs.
+- `forecast_scenarios`: Non-mutating what-if simulation parameters, baseline outcomes, scenario outcomes, and deltas.
+- `forecast_evaluations`: Time-aware walk-forward backtest records storing cutoff date, eval window, predicted vs actual totals, MAE, RMSE, WAPE %, Bias, and per-category errors.
+- Shared `ai_processing_jobs`: Reuses Phase 8 queue with `job_type="forecast_generation"`.

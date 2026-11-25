@@ -37,6 +37,13 @@ from app.models.finance import (
     LedgerEntry,
     LedgerJournal,
 )
+from app.models.forecasting import (
+    FinancialForecast,
+    ForecastEvaluation,
+    ForecastExplanation,
+    ForecastScenario,
+    ForecastValue,
+)
 from app.models.imports import ImportBatch, ImportMappingProfile, ImportRow
 from app.models.intelligence import (
     AiModelMetadata,
@@ -118,4 +125,9 @@ __all__ = [
     "SpendingAnomaly",
     "FinancialInsight",
     "AiProcessingJob",
+    "FinancialForecast",
+    "ForecastValue",
+    "ForecastExplanation",
+    "ForecastScenario",
+    "ForecastEvaluation",
 ]

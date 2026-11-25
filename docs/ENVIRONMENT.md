@@ -35,3 +35,7 @@
 - `GROQ_MODEL=llama-3.3-70b-versatile` — Target Groq model when `GROQ_ENABLED=true`.
 - `GROQ_TIMEOUT_SECONDS=12.0` — Bounded request timeout per Groq completion call.
 - `GROQ_MAX_RETRIES=2` — Bounded client retry limit on transient Groq network failures.
+
+
+## Phase 9 — Financial Forecasting
+- Phase 9 forecasting uses deterministic statistical engines on PostgreSQL data and `AiIntelligenceWorker` (`AI_WORKER_ENABLED`, `AI_WORKER_INTERVAL_SECONDS`) with zero additional mandatory environment secrets or external APIs.

@@ -144,3 +144,15 @@ All endpoints require an authenticated session (`get_current_user`); mutating `P
 - `GET /api/v1/intelligence/anomalies` & `POST /api/v1/intelligence/anomalies/{anomaly_id}/review` — Lists statistical baseline deviations (`robust_median_mad`, `monthly_baseline_comparison`, `recurring_charge_delta`) and supports `acknowledge` / `dismiss` / `reopen`.
 - `GET /api/v1/intelligence/insights` & `POST /api/v1/intelligence/insights/{insight_id}/review` — Lists evidence-backed insights (`new` / `read` / `dismissed`) and supports `mark_read` / `dismiss` / `reopen`.
 - `GET /api/v1/intelligence/jobs` — Lists recent `AiProcessingJob` execution records.
+
+
+## Phase 9 — Financial Forecasting & Predictive Analytics (`/api/v1/forecasting`)
+
+All routes require `get_current_user`; `POST`/`DELETE` routes require `verify_csrf` (`X-CSRF-Token`) and strict `user_id` scoping (`404` on cross-user access).
+
+- `GET /api/v1/forecasting/overview` — Returns complete forecast snapshot (cached via `input_signature` with `is_stale` freshness flag) or computes on first access.
+- `GET /api/v1/forecasting/cashflow`, `/expenses`, `/income`, `/categories`, `/balances`, `/commitments`, `/savings` — Horizon-scoped forecasting projections (`horizon_days` 7–365).
+- `POST /api/v1/forecasting/generate` — Recomputes and persists a fresh `FinancialForecast` snapshot (or enqueues `AiProcessingJob` with `job_type="forecast_generation"` when `async_job=true`).
+- `GET /api/v1/forecasting/history`, `GET /api/v1/forecasting/{forecast_id}`, `GET /api/v1/forecasting/{forecast_id}/explanation` — Inspects persisted forecasts and evidence-backed `ForecastExplanation` links.
+- `POST /api/v1/forecasting/scenarios`, `GET /api/v1/forecasting/scenarios`, `GET /api/v1/forecasting/scenarios/{scenario_id}`, `DELETE /api/v1/forecasting/scenarios/{scenario_id}` — Side-effect-free hypothetical scenario simulator & persisted comparisons.
+- `GET /api/v1/forecasting/accuracy`, `GET /api/v1/forecasting/evaluation/history` — Runs/lists time-aware walk-forward backtests (MAE, RMSE, WAPE, Bias).

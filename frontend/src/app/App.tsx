@@ -25,6 +25,7 @@ import { SubscriptionsPage } from '../pages/subscriptions/SubscriptionsPage';
 import { LoansPage } from '../pages/loans/LoansPage';
 import { DocumentsPage } from '../pages/documents/DocumentsPage';
 import { IntelligencePage } from '../pages/intelligence/IntelligencePage';
+import { ForecastingPage } from '../pages/forecasting/ForecastingPage';
 import { TransactionNavigationFilters } from '../types/analytics';
 
 const PROTECTED_VIEWS = new Set([
@@ -41,6 +42,7 @@ const PROTECTED_VIEWS = new Set([
   'loans',
   'documents',
   'intelligence',
+  'forecasting',
   'profile',
   'preferences',
   'sessions',
@@ -144,6 +146,9 @@ const AppContent: React.FC = () => {
 
       case 'intelligence':
         return <IntelligencePage onNavigate={handleNavigate} />;
+
+      case 'forecasting':
+        return <ForecastingPage onNavigate={handleNavigate} />;
 
       case 'login':
         return <LoginPage onNavigate={handleNavigate} />;
