@@ -19,6 +19,7 @@ vi.mock('../services/phase6Api', () => ({
     resumeSubscription: vi.fn(),
     cancelSubscription: vi.fn(),
     archiveSubscription: vi.fn(),
+    advanceRenewal: vi.fn(),
     recordPayment: vi.fn(),
     linkTransaction: vi.fn(),
     reversePayment: vi.fn(),
@@ -280,6 +281,12 @@ describe('Phase 6 Subscriptions & Loans Frontend', () => {
     });
     vi.mocked(subscriptionsApi.recordPayment).mockResolvedValue(sampleSub);
 
+    vi.mocked(subscriptionsApi.advanceRenewal).mockResolvedValue({
+      ...sampleSub,
+      next_renewal_date: '2026-12-28',
+      previous_renewal_date: '2026-11-28',
+    });
+
     render(<SubscriptionsPage onNavigate={vi.fn()} />);
 
     await waitFor(() => {
@@ -287,8 +294,14 @@ describe('Phase 6 Subscriptions & Loans Frontend', () => {
     });
     expect(screen.getByText('₹2,388.00')).toBeInTheDocument();
 
-    // Open Details & record price increase
-    fireEvent.click(screen.getByText('Details'));
+    // Mark as Paid right from subscription card
+    fireEvent.click(screen.getByText('Mark as Paid'));
+    await waitFor(() => {
+      expect(subscriptionsApi.advanceRenewal).toHaveBeenCalledWith('sub-1');
+    });
+
+    // Click subscription box itself to open More Details modal & record price increase
+    fireEvent.click(screen.getByRole('button', { name: /Open details for Netflix Standard/i }));
     fireEvent.change(screen.getByPlaceholderText('New ₹ Price'), { target: { value: '249' } });
     fireEvent.click(screen.getByText('Update Price'));
     await waitFor(() => {
@@ -298,8 +311,16 @@ describe('Phase 6 Subscriptions & Loans Frontend', () => {
       );
     });
 
-    // Switch to Detected Candidates tab
+    // Open Add Subscription modal & test category + provider preset dropdown + custom text
     fireEvent.click(screen.getByLabelText('Close modal'));
+    fireEvent.click(screen.getByText('Add Subscription'));
+    fireEvent.change(screen.getByLabelText('Subscription Category'), { target: { value: 'music' } });
+    fireEvent.change(screen.getByLabelText('Provider Preset'), { target: { value: 'spotify' } });
+    expect((screen.getByPlaceholderText(/Netflix, Amazon Prime/i) as HTMLInputElement).value).toBe('Spotify');
+    expect((screen.getByPlaceholderText(/Netflix India, Apple/i) as HTMLInputElement).value).toBe('Spotify India');
+
+    // Switch back cleanly & check Detected Candidates tab
+    fireEvent.click(screen.getAllByText('Cancel').slice(-1)[0]);
     fireEvent.click(screen.getByText(/Detected Candidates/i));
     expect(screen.getByText('Spotify India')).toBeInTheDocument();
   });

@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import {
   AlertCircle,
+  Archive,
+  Check,
   CheckCircle2,
   PauseCircle,
   PlayCircle,
@@ -21,18 +23,18 @@ import {
 } from '../../types/phase6';
 import { PAYMENT_METHODS } from '../bills/BillModals';
 import { formatDate, formatINR } from '../../lib/formatters';
+import {
+  CategoryPictureBadge,
+  getCategoryMeta,
+  getProvidersForCategory,
+  matchProviderPreset,
+  ProviderLogo,
+  ProviderPreset,
+  SUBSCRIPTION_CATEGORY_CATALOG,
+} from '../../components/subscriptions/ProviderCatalog';
 
-export const SUBSCRIPTION_CATEGORIES: { id: SubscriptionCategory; label: string }[] = [
-  { id: 'ott_streaming', label: 'OTT & Video Streaming' },
-  { id: 'music', label: 'Music & Audio' },
-  { id: 'cloud_storage', label: 'Cloud Storage' },
-  { id: 'software_saas', label: 'Software & SaaS' },
-  { id: 'gaming', label: 'Gaming' },
-  { id: 'news_media', label: 'News & Digital Media' },
-  { id: 'fitness', label: 'Fitness & Wellness' },
-  { id: 'delivery_membership', label: 'Delivery Membership' },
-  { id: 'other', label: 'Other Subscription' },
-];
+export const SUBSCRIPTION_CATEGORIES: { id: SubscriptionCategory; label: string }[] =
+  SUBSCRIPTION_CATEGORY_CATALOG.map((c) => ({ id: c.id, label: c.label }));
 
 interface SubFormModalProps {
   isOpen: boolean;
@@ -59,6 +61,7 @@ export const SubscriptionFormModal: React.FC<SubFormModalProps> = ({
 }) => {
   const [name, setName] = useState('');
   const [provider, setProvider] = useState('');
+  const [selectedPresetId, setSelectedPresetId] = useState('custom');
   const [category, setCategory] = useState<SubscriptionCategory>('ott_streaming');
   const [planName, setPlanName] = useState('');
   const [amount, setAmount] = useState('');
@@ -84,6 +87,8 @@ export const SubscriptionFormModal: React.FC<SubFormModalProps> = ({
     if (editingSub) {
       setName(editingSub.subscription_name);
       setProvider(editingSub.provider_name || '');
+      const matched = matchProviderPreset(editingSub.subscription_name, editingSub.provider_name);
+      setSelectedPresetId(matched ? matched.id : 'custom');
       setCategory(editingSub.category);
       setPlanName(editingSub.plan_name || '');
       setAmount(editingSub.amount ? String(editingSub.amount) : '');
@@ -101,9 +106,13 @@ export const SubscriptionFormModal: React.FC<SubFormModalProps> = ({
       setEmailCh(Boolean(editingSub.notification_channels?.email));
       setSmsCh(Boolean(editingSub.notification_channels?.sms));
     } else {
-      setName(initialDraft?.name || '');
-      setProvider(initialDraft?.provider || '');
-      setCategory('ott_streaming');
+      const dName = initialDraft?.name || '';
+      const dProvider = initialDraft?.provider || '';
+      const matched = matchProviderPreset(dName, dProvider);
+      setName(dName);
+      setProvider(dProvider);
+      setSelectedPresetId(matched ? matched.id : 'custom');
+      setCategory(matched ? matched.category : 'ott_streaming');
       setPlanName('');
       setAmount(initialDraft?.amount || '');
       setFrequency(initialDraft?.frequency || 'monthly');
@@ -124,6 +133,39 @@ export const SubscriptionFormModal: React.FC<SubFormModalProps> = ({
   }, [isOpen, editingSub, initialDraft]);
 
   if (!isOpen) return null;
+
+  const categoryProviders = getProvidersForCategory(category);
+  const currentCatMeta = getCategoryMeta(category);
+  const CurrentCatIcon = currentCatMeta.Icon;
+
+  const applyPreset = (preset: ProviderPreset) => {
+    setSelectedPresetId(preset.id);
+    setName(preset.name);
+    setProvider(preset.providerName);
+    if (!planName.trim() && preset.suggestedPlan) {
+      setPlanName(preset.suggestedPlan);
+    }
+  };
+
+  const handleCategoryChange = (nextCat: SubscriptionCategory) => {
+    setCategory(nextCat);
+    const nextProviders = getProvidersForCategory(nextCat);
+    const stillMatches = nextProviders.some((p) => p.id === selectedPresetId);
+    if (!stillMatches) {
+      setSelectedPresetId('custom');
+    }
+  };
+
+  const handleProviderDropdownChange = (presetId: string) => {
+    if (presetId === 'custom') {
+      setSelectedPresetId('custom');
+      return;
+    }
+    const found = categoryProviders.find((p) => p.id === presetId);
+    if (found) {
+      applyPreset(found);
+    }
+  };
 
   const toggleDay = (d: number) =>
     setReminderDays((prev) =>
@@ -197,46 +239,165 @@ export const SubscriptionFormModal: React.FC<SubFormModalProps> = ({
         )}
 
         <form onSubmit={handleSubmit} className="space-y-3.5 mt-4">
+          {/* Category Visual Selector (Pictures) */}
+          <div className="space-y-2">
+            <label className="block font-semibold text-gray-700">Select Category</label>
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
+              {SUBSCRIPTION_CATEGORY_CATALOG.map((cat) => {
+                const Icon = cat.Icon;
+                const active = category === cat.id;
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => handleCategoryChange(cat.id)}
+                    className={`flex items-center space-x-1.5 px-2 py-1.5 rounded-lg border text-left transition-all ${
+                      active
+                        ? `${cat.bgClass} ${cat.textClass} ${cat.borderClass} ring-1 ring-offset-0 ring-current font-semibold shadow-xs`
+                        : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    <span
+                      className={`w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 ${cat.bgClass} ${cat.textClass}`}
+                    >
+                      <Icon className="w-3 h-3" />
+                    </span>
+                    <span className="truncate text-[10px]">{cat.shortLabel}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Category Dropdown + Provider Dropdown beside it (with pictures) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-slate-50/80 border border-slate-200 rounded-xl">
+            <div>
+              <label className="block font-semibold text-gray-700 mb-1">Category *</label>
+              <div className="flex items-center space-x-2">
+                <span
+                  className={`w-9 h-9 rounded-lg flex items-center justify-center border flex-shrink-0 ${currentCatMeta.bgClass} ${currentCatMeta.textClass} ${currentCatMeta.borderClass}`}
+                  title={currentCatMeta.label}
+                >
+                  <CurrentCatIcon className="w-4 h-4" />
+                </span>
+                <select
+                  aria-label="Subscription Category"
+                  value={category}
+                  onChange={(e) => handleCategoryChange(e.target.value as SubscriptionCategory)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white font-medium"
+                >
+                  {SUBSCRIPTION_CATEGORIES.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block font-semibold text-gray-700 mb-1">
+                Provider Preset ({currentCatMeta.shortLabel})
+              </label>
+              <div className="flex items-center space-x-2">
+                <ProviderLogo
+                  category={category}
+                  subscriptionName={name}
+                  providerName={provider}
+                  size="sm"
+                />
+                <select
+                  aria-label="Provider Preset"
+                  value={selectedPresetId}
+                  onChange={(e) => handleProviderDropdownChange(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white font-medium"
+                >
+                  <option value="custom">Custom / Type provider below...</option>
+                  {categoryProviders.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Visual Quick-Pick Logos for the selected category */}
+            {categoryProviders.length > 0 && (
+              <div className="sm:col-span-2 pt-1">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5">
+                  Quick Pick {currentCatMeta.shortLabel} Logos (or type custom below)
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {categoryProviders.slice(0, 6).map((preset) => {
+                    const isPicked = selectedPresetId === preset.id;
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => applyPreset(preset)}
+                        className={`inline-flex items-center space-x-1.5 pl-1 pr-2 py-1 rounded-lg border text-[11px] font-medium transition-all ${
+                          isPicked
+                            ? 'bg-blue-50 border-blue-400 text-blue-800 shadow-xs'
+                            : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        <ProviderLogo
+                          category={preset.category}
+                          subscriptionName={preset.name}
+                          providerName={preset.providerName}
+                          size="sm"
+                          className="!w-5 !h-5 !rounded-md !text-[8px]"
+                        />
+                        <span>{preset.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Text Inputs beside Logo Preview (allows typing any provider/name manually too) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block font-semibold text-gray-700 mb-1">Subscription Name *</label>
+              <label className="block font-semibold text-gray-700 mb-1">
+                Subscription Name (Type or Picked) *
+              </label>
               <input
                 type="text"
                 required
                 placeholder="e.g., Netflix, Amazon Prime, Google One"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setName(val);
+                  const matched = matchProviderPreset(val, provider);
+                  setSelectedPresetId(matched && matched.category === category ? matched.id : 'custom');
+                }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
               />
             </div>
             <div>
-              <label className="block font-semibold text-gray-700 mb-1">Provider / Merchant</label>
+              <label className="block font-semibold text-gray-700 mb-1">
+                Provider / Merchant (Type Custom)
+              </label>
               <input
                 type="text"
-                placeholder="e.g., Netflix India, Apple"
+                placeholder="e.g., Netflix India, Apple, Custom"
                 value={provider}
-                onChange={(e) => setProvider(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setProvider(val);
+                  const matched = matchProviderPreset(name, val);
+                  setSelectedPresetId(matched && matched.category === category ? matched.id : 'custom');
+                }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg"
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="block font-semibold text-gray-700 mb-1">Category</label>
-              <select
-                aria-label="Subscription Category"
-                value={category}
-                onChange={(e) => setCategory(e.target.value as SubscriptionCategory)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white"
-              >
-                {SUBSCRIPTION_CATEGORIES.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block font-semibold text-gray-700 mb-1">Plan Name</label>
               <input
@@ -513,8 +674,21 @@ export const SubscriptionPaymentModal: React.FC<SubPaymentModalProps> = ({
         >
           <X className="w-5 h-5" />
         </button>
-        <h3 className="text-lg font-bold text-gray-900">Record Subscription Payment</h3>
-        <p className="text-gray-500 mt-0.5">{sub.subscription_name}</p>
+        <div className="flex items-center space-x-3 pr-8">
+          <ProviderLogo
+            category={sub.category}
+            subscriptionName={sub.subscription_name}
+            providerName={sub.provider_name}
+            size="md"
+          />
+          <div>
+            <h3 className="text-lg font-bold text-gray-900">Pay Subscription Bill</h3>
+            <p className="text-gray-500 mt-0.5">
+              {sub.subscription_name}
+              {sub.provider_name ? ` • ${sub.provider_name}` : ''}
+            </p>
+          </div>
+        </div>
 
         <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 flex items-start space-x-2">
           <ShieldAlert className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -716,23 +890,47 @@ export const SubscriptionDetailsModal: React.FC<SubDetailsModalProps> = ({
         </button>
 
         <div className="flex flex-wrap items-start justify-between gap-3 pr-8">
-          <div>
-            <h3 className="text-lg font-bold text-gray-900">{sub.subscription_name}</h3>
-            <p className="text-gray-500">
-              {sub.provider_name || 'Personal'} •{' '}
-              <span className="capitalize">{sub.billing_frequency.replace('_', ' ')}</span> • Status:{' '}
-              <strong className="uppercase">{sub.status}</strong>
-            </p>
+          <div className="flex items-start space-x-3">
+            <ProviderLogo
+              category={sub.category}
+              subscriptionName={sub.subscription_name}
+              providerName={sub.provider_name}
+              size="lg"
+            />
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-lg font-bold text-gray-900">{sub.subscription_name}</h3>
+                <CategoryPictureBadge category={sub.category} />
+              </div>
+              <p className="text-gray-500 mt-0.5">
+                {sub.provider_name || 'Personal'}
+                {sub.plan_name ? ` • ${sub.plan_name}` : ''} •{' '}
+                <span className="capitalize">{sub.billing_frequency.replace('_', ' ')}</span> • Status:{' '}
+                <strong className="uppercase">{sub.status}</strong>
+              </p>
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
             {sub.status !== 'archived' && sub.status !== 'cancelled' && (
-              <button
-                type="button"
-                onClick={() => onRecordPayment(sub)}
-                className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg font-semibold"
-              >
-                Record Payment
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => onRecordPayment(sub)}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold inline-flex items-center space-x-1"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Pay Bill</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => runAction(() => subscriptionsApi.advanceRenewal(sub.id))}
+                  className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg font-semibold inline-flex items-center space-x-1"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Mark as Paid</span>
+                </button>
+              </>
             )}
             {(sub.status === 'active' || sub.status === 'trial') && (
               <button
@@ -768,13 +966,24 @@ export const SubscriptionDetailsModal: React.FC<SubDetailsModalProps> = ({
               </button>
             )}
             {sub.status !== 'archived' && (
-              <button
-                type="button"
-                onClick={() => onEdit(sub)}
-                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg font-medium"
-              >
-                Edit
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => onEdit(sub)}
+                  className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg font-medium"
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => runAction(() => subscriptionsApi.archiveSubscription(sub.id))}
+                  className="px-3 py-1.5 bg-gray-50 hover:bg-gray-100 text-gray-600 border border-gray-200 rounded-lg font-medium inline-flex items-center space-x-1"
+                >
+                  <Archive className="w-3.5 h-3.5" />
+                  <span>Archive</span>
+                </button>
+              </>
             )}
           </div>
         </div>

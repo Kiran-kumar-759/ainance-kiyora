@@ -124,6 +124,9 @@ export const subscriptionsApi = {
   archiveSubscription: (id: string): Promise<Subscription> =>
     phase6Request<Subscription>(`/api/v1/subscriptions/${id}/archive`, { method: 'POST' }),
 
+  advanceRenewal: (id: string): Promise<Subscription> =>
+    phase6Request<Subscription>(`/api/v1/subscriptions/${id}/advance-renewal`, { method: 'POST' }),
+
   recordPayment: (id: string, payload: Record<string, unknown>): Promise<Subscription> =>
     phase6Request<Subscription>(`/api/v1/subscriptions/${id}/payments`, {
       method: 'POST',

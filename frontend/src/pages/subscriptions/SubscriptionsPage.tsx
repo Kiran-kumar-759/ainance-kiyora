@@ -3,6 +3,7 @@ import {
   AlertCircle,
   Bell,
   CalendarClock,
+  Check,
   CreditCard,
   Eye,
   Plus,
@@ -24,6 +25,10 @@ import {
   SubscriptionPayment,
 } from '../../types/phase6';
 import { formatDate, formatINR } from '../../lib/formatters';
+import {
+  CategoryPictureBadge,
+  ProviderLogo,
+} from '../../components/subscriptions/ProviderCatalog';
 import {
   SUBSCRIPTION_CATEGORIES,
   SubscriptionDetailsModal,
@@ -69,6 +74,7 @@ export const SubscriptionsPage: React.FC<SubscriptionsPageProps> = () => {
   } | null>(null);
   const [payingSub, setPayingSub] = useState<Subscription | null>(null);
   const [detailsSub, setDetailsSub] = useState<Subscription | null>(null);
+  const [markingPaidId, setMarkingPaidId] = useState<string | null>(null);
 
   useEffect(() => {
     financeApi.listAccounts(false).then(setAccounts).catch(() => {});
@@ -125,6 +131,26 @@ export const SubscriptionsPage: React.FC<SubscriptionsPageProps> = () => {
       await loadData();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Reminder check failed.');
+    }
+  };
+
+  const handleMarkAsPaid = async (sub: Subscription) => {
+    if (markingPaidId) return;
+    setMarkingPaidId(sub.id);
+    setError(null);
+    try {
+      const updated = await subscriptionsApi.advanceRenewal(sub.id);
+      setBanner(
+        `Marked "${updated.subscription_name}" as paid for this cycle. Next renewal: ${
+          updated.next_renewal_date ? formatDate(updated.next_renewal_date) : 'Updated'
+        }.`
+      );
+      if (detailsSub?.id === updated.id) setDetailsSub(updated);
+      await loadData();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to mark subscription as paid.');
+    } finally {
+      setMarkingPaidId(null);
     }
   };
 
@@ -350,14 +376,15 @@ export const SubscriptionsPage: React.FC<SubscriptionsPageProps> = () => {
             </button>
           </form>
 
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          {/* Subscriptions Card Boxes Grid */}
+          <div>
             {loading ? (
-              <div className="p-8 text-center text-gray-500 text-xs">
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-8 text-center text-gray-500 text-xs">
                 <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-blue-600" />
                 Loading subscriptions...
               </div>
             ) : subs.length === 0 ? (
-              <div className="p-10 text-center text-xs">
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-10 text-center text-xs">
                 <CreditCard className="w-10 h-10 text-gray-300 mx-auto mb-2" />
                 <div className="font-semibold text-gray-900">No subscriptions tracked yet</div>
                 <p className="text-gray-500 mt-1">
@@ -366,84 +393,184 @@ export const SubscriptionsPage: React.FC<SubscriptionsPageProps> = () => {
                 </p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 uppercase text-[10px]">
-                    <tr>
-                      <th className="py-2.5 px-4">Service / Plan</th>
-                      <th className="py-2.5 px-3">Category</th>
-                      <th className="py-2.5 px-3">Billing Cycle</th>
-                      <th className="py-2.5 px-3 text-right">Price</th>
-                      <th className="py-2.5 px-3 text-right">Monthly Eq.</th>
-                      <th className="py-2.5 px-3">Next Renewal</th>
-                      <th className="py-2.5 px-3">Status</th>
-                      <th className="py-2.5 px-4 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {subs.map((s) => (
-                      <tr key={s.id} className="hover:bg-gray-50/70">
-                        <td className="py-3 px-4">
-                          <div className="font-semibold text-gray-900">{s.subscription_name}</div>
-                          <div className="text-[11px] text-gray-500">
-                            {[s.provider_name, s.plan_name].filter(Boolean).join(' • ') || '—'}
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {subs.map((s) => {
+                  const dueSoonBadge =
+                    s.days_until_renewal !== null && s.days_until_renewal !== undefined
+                      ? s.days_until_renewal < 0
+                        ? `${Math.abs(s.days_until_renewal)}d overdue`
+                        : s.days_until_renewal === 0
+                          ? 'Due today'
+                          : s.days_until_renewal <= 7
+                            ? `In ${s.days_until_renewal}d`
+                            : null
+                      : null;
+
+                  return (
+                    <div
+                      key={s.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Open details for ${s.subscription_name}`}
+                      onClick={() => setDetailsSub(s)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setDetailsSub(s);
+                        }
+                      }}
+                      className="group bg-white rounded-2xl border border-gray-200 hover:border-blue-300 shadow-sm hover:shadow-md transition-all p-4 flex flex-col justify-between cursor-pointer text-xs"
+                    >
+                      {/* Top Header: Provider Logo + Name + Status */}
+                      <div className="space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-start space-x-3 min-w-0">
+                            <ProviderLogo
+                              category={s.category}
+                              subscriptionName={s.subscription_name}
+                              providerName={s.provider_name}
+                              size="lg"
+                            />
+                            <div className="min-w-0">
+                              <h3 className="text-sm font-bold text-gray-900 truncate group-hover:text-blue-700 transition-colors">
+                                {s.subscription_name}
+                              </h3>
+                              <div className="text-[11px] text-gray-500 truncate mt-0.5">
+                                {[s.provider_name, s.plan_name].filter(Boolean).join(' • ') ||
+                                  'Personal Subscription'}
+                              </div>
+                              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                                <CategoryPictureBadge category={s.category} />
+                              </div>
+                            </div>
                           </div>
-                        </td>
-                        <td className="py-3 px-3 uppercase text-[10px] font-semibold text-gray-600">
-                          {s.category.replace('_', ' ')}
-                        </td>
-                        <td className="py-3 px-3 capitalize">
-                          {s.billing_frequency.replace('_', ' ')}
-                        </td>
-                        <td className="py-3 px-3 text-right font-bold">
-                          {s.is_amount_unknown ? (
-                            <span className="text-amber-700 italic">Pending</span>
-                          ) : (
-                            formatINR(s.amount)
-                          )}
-                        </td>
-                        <td className="py-3 px-3 text-right text-indigo-700 font-semibold">
-                          {s.monthly_equivalent ? formatINR(s.monthly_equivalent) : '—'}
-                        </td>
-                        <td className="py-3 px-3">
-                          {s.status === 'trial' && s.trial_end_date ? (
-                            <span className="text-indigo-700 font-medium">
-                              Trial ends {formatDate(s.trial_end_date)}
-                            </span>
-                          ) : s.next_renewal_date ? (
-                            formatDate(s.next_renewal_date)
-                          ) : (
-                            '—'
-                          )}
-                        </td>
-                        <td className="py-3 px-3">{statusBadge(s.status)}</td>
-                        <td className="py-3 px-4 text-right space-x-1.5 whitespace-nowrap">
-                          {s.status !== 'cancelled' && s.status !== 'archived' && (
+                          <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                            {statusBadge(s.status)}
+                            {dueSoonBadge && s.status !== 'cancelled' && s.status !== 'archived' && (
+                              <span
+                                className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                                  (s.days_until_renewal ?? 1) < 0
+                                    ? 'bg-rose-50 text-rose-700'
+                                    : 'bg-amber-50 text-amber-800'
+                                }`}
+                              >
+                                {dueSoonBadge}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Middle Details Box */}
+                        <div className="grid grid-cols-2 gap-2.5 p-3 rounded-xl bg-slate-50/90 border border-slate-100">
+                          <div>
+                            <div className="text-[10px] font-semibold uppercase text-gray-500">
+                              Billing Price
+                            </div>
+                            <div className="text-sm font-bold text-gray-900 mt-0.5">
+                              {s.is_amount_unknown ? (
+                                <span className="text-amber-700 italic">Pending / Trial</span>
+                              ) : (
+                                <>
+                                  {formatINR(s.amount)}{' '}
+                                  <span className="text-[10px] font-normal text-gray-500 capitalize">
+                                    / {s.billing_frequency.replace('_', ' ')}
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-indigo-700 font-medium mt-0.5">
+                              {s.monthly_equivalent ? `${formatINR(s.monthly_equivalent)}/mo` : '—'}
+                            </div>
+                          </div>
+
+                          <div>
+                            <div className="text-[10px] font-semibold uppercase text-gray-500">
+                              {s.status === 'trial' && s.trial_end_date ? 'Trial Ends' : 'Next Renewal'}
+                            </div>
+                            <div className="font-semibold text-gray-900 mt-0.5">
+                              {s.status === 'trial' && s.trial_end_date
+                                ? formatDate(s.trial_end_date)
+                                : s.next_renewal_date
+                                  ? formatDate(s.next_renewal_date)
+                                  : '—'}
+                            </div>
+                            <div className="text-[10px] text-gray-500 mt-0.5">
+                              Paid total: <strong className="text-emerald-700">{formatINR(s.total_actual_paid)}</strong>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Secondary Meta Line */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-gray-500 px-0.5">
+                          <span>
+                            {s.preferred_payment_method
+                              ? `Via ${s.preferred_payment_method.replace('_', ' ').toUpperCase()}`
+                              : 'Method unset'}
+                            {s.linked_account_name ? ` • ${s.linked_account_name}` : ''}
+                          </span>
+                          <span>
+                            {s.previous_renewal_date
+                              ? `Last cycle: ${formatDate(s.previous_renewal_date)}`
+                              : s.reminder_enabled
+                                ? `${s.reminders.length || s.reminder_days_before.length} reminder(s)`
+                                : 'Reminders off'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Bottom Action Bar */}
+                      <div
+                        className="mt-3.5 pt-3 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {s.status !== 'cancelled' && s.status !== 'archived' ? (
+                          <div className="flex flex-wrap items-center gap-1.5">
                             <button
                               type="button"
                               onClick={() => setPayingSub(s)}
-                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-semibold"
+                              className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold inline-flex items-center space-x-1 shadow-xs"
                             >
-                              Record Payment
+                              <CreditCard className="w-3 h-3" />
+                              <span>Pay Bill</span>
                             </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => setDetailsSub(s)}
-                            className="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded font-medium inline-flex items-center space-x-1"
-                          >
-                            <Eye className="w-3 h-3" />
-                            <span>Details</span>
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                            <button
+                              type="button"
+                              disabled={markingPaidId === s.id}
+                              onClick={() => void handleMarkAsPaid(s)}
+                              className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg font-semibold inline-flex items-center space-x-1 disabled:opacity-50"
+                              title="Mark this billing cycle as paid and advance next renewal date"
+                            >
+                              {markingPaidId === s.id ? (
+                                <RefreshCw className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <Check className="w-3 h-3" />
+                              )}
+                              <span>Mark as Paid</span>
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-gray-400 italic">
+                            {s.status === 'cancelled' ? 'Cancelled' : 'Archived'}
+                          </span>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => setDetailsSub(s)}
+                          className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium inline-flex items-center space-x-1"
+                        >
+                          <Eye className="w-3 h-3" />
+                          <span>Details</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
+
             {totalPages > 1 && (
-              <div className="px-4 py-2.5 bg-gray-50 border-t border-gray-200 flex justify-between text-xs">
+              <div className="mt-4 bg-white rounded-xl px-4 py-2.5 border border-gray-200 flex justify-between text-xs">
                 <span>
                   Total {total} (Page {page} of {totalPages})
                 </span>
@@ -544,8 +671,16 @@ export const SubscriptionsPage: React.FC<SubscriptionsPageProps> = () => {
               <span>Top Subscriptions &amp; Price Changes ({analytics.price_increase_events_count} increases)</span>
             </div>
             {analytics.most_expensive.map((s) => (
-              <div key={s.id} className="flex justify-between py-1.5 border-b border-gray-100">
-                <span className="font-semibold text-gray-800">{s.subscription_name}</span>
+              <div key={s.id} className="flex items-center justify-between py-1.5 border-b border-gray-100">
+                <div className="flex items-center space-x-2">
+                  <ProviderLogo
+                    category={s.category}
+                    subscriptionName={s.subscription_name}
+                    providerName={s.provider_name}
+                    size="sm"
+                  />
+                  <span className="font-semibold text-gray-800">{s.subscription_name}</span>
+                </div>
                 <span className="font-bold text-gray-900">
                   {formatINR(s.monthly_equivalent)}/mo ({formatINR(s.annual_equivalent)}/yr)
                 </span>
@@ -572,9 +707,17 @@ export const SubscriptionsPage: React.FC<SubscriptionsPageProps> = () => {
             <div className="divide-y divide-gray-100">
               {candidates.map((c) => (
                 <div key={c.merchant_key} className="py-3 flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div className="font-bold text-gray-900">{c.display_name}</div>
-                    <div className="text-gray-500">{c.confidence_note}</div>
+                  <div className="flex items-center space-x-3">
+                    <ProviderLogo
+                      category="other"
+                      subscriptionName={c.display_name}
+                      providerName={c.display_name}
+                      size="sm"
+                    />
+                    <div>
+                      <div className="font-bold text-gray-900">{c.display_name}</div>
+                      <div className="text-gray-500">{c.confidence_note}</div>
+                    </div>
                   </div>
                   <div className="flex items-center space-x-2">
                     <button
