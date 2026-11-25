@@ -78,3 +78,29 @@ Mutating endpoints (`POST`, `PATCH`, `PUT`, `DELETE`) require `X-CSRF-Token` alo
 - `GET /api/v1/notifications/unread-count` — Returns `{ "unread_count": int }`.
 - `PATCH /api/v1/notifications/{notification_id}/read` — Marks single notification read (`404` if not owned by user).
 - `POST /api/v1/notifications/read-all` — Marks all user notifications read.
+
+---
+
+## 5. OTT & Subscription Management (`/api/v1/subscriptions` — Phase 6)
+
+- `POST /api/v1/subscriptions` (`201`) — Register a subscription (or free trial) with optional amount and reminder schedule.
+- `GET /api/v1/subscriptions` — Paginated list with filters (`status_filter`, `category`, `search`, `sort_by`, `include_archived`).
+- `GET /api/v1/subscriptions/overview`, `GET /api/v1/subscriptions/analytics` — Normalized monthly/annual recurring projections vs actual historical spend, category/provider breakdown, trend, and price changes.
+- `GET /api/v1/subscriptions/{id}`, `PATCH /api/v1/subscriptions/{id}` — Details and updates (automatically logs price changes).
+- `POST /api/v1/subscriptions/{id}/price-change` — Records dated price revision (`previous_price` → `new_price`) preserving past payments.
+- `POST /api/v1/subscriptions/{id}/pause`, `/resume`, `/cancel`, `/archive`, `/advance-renewal` — Full lifecycle controls with reminder sync/cancellation.
+- `POST /api/v1/subscriptions/{id}/payments`, `/payments/link-transaction`, `/payments/{payment_id}/reverse`, `GET /payments` — Atomic ledger-backed subscription expense payments (`idempotency_key`) and reversals.
+- `PUT /api/v1/subscriptions/{id}/reminders` — Update renewal/trial reminder offsets & channels.
+- `GET /api/v1/subscriptions/candidates`, `POST /api/v1/subscriptions/candidates/decision` — Deterministic recurring expense candidates requiring user review (`ignore` / `link`).
+
+---
+
+## 6. Loan & EMI Management (`/api/v1/loans` — Phase 6)
+
+- `POST /api/v1/loans/calculator` — Deterministic `Decimal` EMI & amortization preview (`reducing_balance`, `flat_rate`, `zero_interest`).
+- `POST /api/v1/loans` (`201`) — Register a newly disbursed or mid-tenure existing loan (creates `loan_liability` ledger account + amortization installments).
+- `GET /api/v1/loans`, `/overview`, `/analytics`, `/payments` — Loan dashboard totals, breakdown, progress, and repayment history.
+- `GET /api/v1/loans/{id}`, `PATCH /api/v1/loans/{id}`, `POST /api/v1/loans/{id}/archive` — Details, metadata edits, and archival.
+- `POST /api/v1/loans/{id}/rate-revision` — Floating/fixed interest rate update preserving historical paid installments and regenerating unpaid schedule (`recalculate_emi` or `adjust_tenure`).
+- `POST /api/v1/loans/{id}/prepayment-scenario` — Hypothetical lump-sum / extra EMI / fee simulation (read-only, zero DB/ledger side effects).
+- `POST /api/v1/loans/{id}/payments`, `/payments/link-transaction`, `/payments/{payment_id}/reverse` — Atomic split accounting: principal paid posts as `FinancialTransfer` reducing `loan_liability` (not expense); interest paid posts as `Loan Interest` expense in double-entry ledger & Phase 4 analytics.

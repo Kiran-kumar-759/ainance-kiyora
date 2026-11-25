@@ -91,7 +91,7 @@ class TransferService:
             )
 
         # Validation 5: Asset source account must have sufficient balance
-        if source_acc.account_type != "credit_card" and req.amount > source_acc.current_balance:
+        if source_acc.account_type not in {"credit_card", "loan_liability"} and req.amount > source_acc.current_balance:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=(
@@ -218,7 +218,7 @@ class TransferService:
             db.refresh(tr.source_account)
             db.refresh(tr.destination_account)
             for acc in (tr.source_account, tr.destination_account):
-                if acc.account_type != "credit_card" and acc.current_balance < Decimal("0.00"):
+                if acc.account_type not in {"credit_card", "loan_liability"} and acc.current_balance < Decimal("0.00"):
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail=(

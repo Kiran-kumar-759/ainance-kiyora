@@ -4,10 +4,11 @@ export type AccountType =
   | 'cash'
   | 'credit_card'
   | 'digital_wallet'
+  | 'loan_liability'
   | 'other';
 
 export type AccountStatus = 'active' | 'archived';
-export type AccountSource = 'manual' | 'demo_bank';
+export type AccountSource = 'manual' | 'demo_bank' | 'loan';
 export type TransactionType = 'income' | 'expense' | 'transfer';
 
 export interface FinancialAccount {

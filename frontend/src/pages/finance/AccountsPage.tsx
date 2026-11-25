@@ -325,7 +325,8 @@ export const AccountsPage: React.FC<AccountsPageProps> = ({ onNavigate }) => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {filteredAccounts.map((acc) => {
-            const isCC = acc.account_type === 'credit_card';
+            const isCC =
+              acc.account_type === 'credit_card' || acc.account_type === 'loan_liability';
             return (
               <div
                 key={acc.id}

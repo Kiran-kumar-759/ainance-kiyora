@@ -62,7 +62,7 @@ class DashboardService:
         total_liabilities = Decimal("0.00")
 
         for acc in accounts:
-            if acc.account_type == "credit_card":
+            if acc.account_type in {"credit_card", "loan_liability"}:
                 total_liabilities += acc.current_balance
             else:
                 total_assets += acc.current_balance

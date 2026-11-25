@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models.bills import Bill, BillReminder, Notification
+from app.models.loans import Loan
+from app.models.subscriptions import Subscription
 from app.models.user import User
 from app.repositories.bills.bill_repository import BillRepository
 from app.schemas.bills import ProcessRemindersResponse
@@ -114,6 +116,7 @@ class ReminderService:
                     BillReminder(
                         user_id=bill.user_id,
                         bill_id=bill.id,
+                        reminder_scope="bill",
                         offset_days=offset,
                         reminder_at=rem_at,
                         channels=channels,
@@ -123,6 +126,126 @@ class ReminderService:
                     )
                 )
         db.flush()
+
+    def _reconcile_scoped_reminders(
+        self,
+        db: Session,
+        *,
+        existing: list[BillReminder],
+        user_id: uuid.UUID,
+        scope: str,
+        target_id: uuid.UUID,
+        target_date: dt.date | None,
+        enabled: bool,
+        reminder_days_before: list[int],
+        notification_channels: dict | None,
+        user_timezone: str | None,
+    ) -> None:
+        """Shared idempotent reminder reconciliation for subscriptions and loan EMIs."""
+        channels = self._selected_channel_list(notification_channels)
+        if not enabled or target_date is None:
+            for rem in existing:
+                if rem.delivery_status in {"pending", "failed"}:
+                    rem.delivery_status = "cancelled"
+                    rem.is_enabled = False
+                    db.add(rem)
+            db.flush()
+            return
+
+        user_today = resolve_user_today(user_timezone)
+        raw_offsets = sorted(
+            {int(d) for d in (reminder_days_before or [7, 3, 1, 0]) if 0 <= int(d) <= 60},
+            reverse=True,
+        )
+        if target_date < user_today:
+            desired_offsets = [0]
+        else:
+            desired_offsets = [
+                d for d in raw_offsets if (target_date - dt.timedelta(days=d)) >= user_today
+            ] or [0]
+
+        desired_keys = {
+            f"{scope}:{target_id}:{offset}:{target_date.isoformat()}": offset
+            for offset in desired_offsets
+        }
+        existing_by_key = {r.idempotency_key: r for r in existing}
+
+        for rem in existing:
+            if rem.idempotency_key not in desired_keys and rem.delivery_status in {
+                "pending",
+                "failed",
+            }:
+                rem.delivery_status = "cancelled"
+                rem.is_enabled = False
+                db.add(rem)
+
+        for key, offset in desired_keys.items():
+            rem_at = self._compute_reminder_at_utc(target_date, offset, user_timezone)
+            if key in existing_by_key:
+                rem = existing_by_key[key]
+                if rem.delivery_status == "pending":
+                    rem.channels = channels
+                    rem.reminder_at = rem_at
+                    rem.is_enabled = True
+                    db.add(rem)
+            else:
+                db.add(
+                    BillReminder(
+                        user_id=user_id,
+                        bill_id=None,
+                        subscription_id=target_id if scope == "subscription" else None,
+                        loan_id=target_id if scope == "loan_emi" else None,
+                        reminder_scope=scope,
+                        offset_days=offset,
+                        reminder_at=rem_at,
+                        channels=channels,
+                        is_enabled=True,
+                        delivery_status="pending",
+                        idempotency_key=key,
+                    )
+                )
+        db.flush()
+
+    def sync_reminders_for_subscription(
+        self, db: Session, sub: Subscription, user_timezone: str | None = "Asia/Kolkata"
+    ) -> None:
+        existing = self.bill_repo.list_reminders_for_subscription(db, sub.id)
+        is_active_sub = sub.status in {"active", "trial"} and sub.reminder_enabled
+        target_date = (
+            sub.trial_end_date
+            if sub.status == "trial" and sub.trial_end_date is not None
+            else sub.next_renewal_date
+        )
+        self._reconcile_scoped_reminders(
+            db,
+            existing=existing,
+            user_id=sub.user_id,
+            scope="subscription",
+            target_id=sub.id,
+            target_date=target_date,
+            enabled=is_active_sub,
+            reminder_days_before=sub.reminder_days_before,
+            notification_channels=sub.notification_channels,
+            user_timezone=user_timezone,
+        )
+
+    def sync_reminders_for_loan(
+        self, db: Session, loan: Loan, user_timezone: str | None = "Asia/Kolkata"
+    ) -> None:
+        existing = self.bill_repo.list_reminders_for_loan(db, loan.id)
+        is_active_loan = loan.status in {"active", "overdue"} and loan.reminder_enabled
+        self._reconcile_scoped_reminders(
+            db,
+            existing=existing,
+            user_id=loan.user_id,
+            scope="loan_emi",
+            target_id=loan.id,
+            target_date=loan.next_emi_due_date,
+            enabled=is_active_loan,
+            reminder_days_before=loan.reminder_days_before,
+            notification_channels=loan.notification_channels,
+            user_timezone=user_timezone,
+        )
 
     def _format_amount_text(self, bill: Bill) -> str:
         target = get_effective_target_amount(bill)
@@ -178,30 +301,113 @@ class ReminderService:
         notifications_created = 0
 
         for rem in claimed:
-            bill = self.bill_repo.get_bill(db, rem.bill_id, rem.user_id)
             user = db.get(User, rem.user_id)
             user_tz = (
                 user.preferences.timezone
                 if user and user.preferences
                 else "Asia/Kolkata"
             )
-            user_today = ref_now.astimezone(ZoneInfo(user_tz or "Asia/Kolkata")).date() if user_tz else resolve_user_today()
+            user_today = (
+                ref_now.astimezone(ZoneInfo(user_tz or "Asia/Kolkata")).date()
+                if user_tz
+                else resolve_user_today()
+            )
 
-            # Never send reminders for paid, archived, or inactive bills
-            if not bill or not bill.is_active or bill.stored_status in {"paid", "archived"}:
-                rem.delivery_status = "cancelled"
-                rem.is_enabled = False
-                db.add(rem)
-                continue
+            scope = getattr(rem, "reminder_scope", "bill") or "bill"
+            notif_type: str
+            title: str
+            body: str
+            amount_display: str
+            due_date_display: str
+            dedupe: str
+            rel_bill_id = None
+            rel_sub_id = None
+            rel_loan_id = None
 
-            derived = compute_bill_derived_status(bill, today=user_today)
-            if derived == "paid":
-                rem.delivery_status = "cancelled"
-                rem.is_enabled = False
-                db.add(rem)
-                continue
+            if scope == "subscription" and rem.subscription_id is not None:
+                sub = db.get(Subscription, rem.subscription_id)
+                if not sub or sub.status not in {"active", "trial"} or not sub.reminder_enabled:
+                    rem.delivery_status = "cancelled"
+                    rem.is_enabled = False
+                    db.add(rem)
+                    continue
+                target_dt = (
+                    sub.trial_end_date
+                    if sub.status == "trial" and sub.trial_end_date is not None
+                    else sub.next_renewal_date
+                )
+                if not target_dt:
+                    rem.delivery_status = "cancelled"
+                    rem.is_enabled = False
+                    db.add(rem)
+                    continue
+                days_left = (target_dt - user_today).days
+                amount_display = f"₹{sub.amount:,.2f}" if sub.amount is not None else "Price pending"
+                due_date_display = target_dt.strftime("%d/%m/%Y")
+                if sub.status == "trial":
+                    notif_type = "subscription_trial_ending"
+                    title = f"Trial Ending Soon: {sub.subscription_name}"
+                    body = f"Free trial for {sub.subscription_name} ends on {due_date_display} ({max(days_left, 0)} day(s) left)."
+                elif days_left <= 0:
+                    notif_type = "subscription_renewal"
+                    title = f"Subscription Renewal Due: {sub.subscription_name}"
+                    body = f"{sub.subscription_name} renewal ({amount_display}) is due on {due_date_display}."
+                else:
+                    notif_type = "subscription_renewal"
+                    title = f"Upcoming Renewal: {sub.subscription_name} in {days_left} day(s)"
+                    body = f"{sub.subscription_name} ({amount_display}) renews on {due_date_display}."
+                dedupe = f"sub-alert:{sub.id}:{user_today.isoformat()}:{notif_type}"
+                rel_sub_id = sub.id
+            elif scope == "loan_emi" and rem.loan_id is not None:
+                loan = db.get(Loan, rem.loan_id)
+                if (
+                    not loan
+                    or loan.status not in {"active", "overdue"}
+                    or not loan.reminder_enabled
+                    or not loan.next_emi_due_date
+                ):
+                    rem.delivery_status = "cancelled"
+                    rem.is_enabled = False
+                    db.add(rem)
+                    continue
+                days_left = (loan.next_emi_due_date - user_today).days
+                amount_display = f"₹{loan.emi_amount:,.2f}"
+                due_date_display = loan.next_emi_due_date.strftime("%d/%m/%Y")
+                if days_left < 0:
+                    notif_type = "loan_emi_overdue"
+                    title = f"Overdue Loan EMI: {loan.loan_name}"
+                    body = f"EMI of {amount_display} for {loan.loan_name} ({loan.lender_name}) was due on {due_date_display} (overdue by {abs(days_left)} day(s))."
+                else:
+                    notif_type = "loan_emi_due"
+                    title = f"Upcoming Loan EMI: {loan.loan_name}"
+                    body = f"EMI of {amount_display} for {loan.loan_name} ({loan.lender_name}) is due on {due_date_display}."
+                dedupe = f"loan-alert:{loan.id}:{user_today.isoformat()}:{notif_type}"
+                rel_loan_id = loan.id
+            else:
+                if rem.bill_id is None:
+                    rem.delivery_status = "cancelled"
+                    rem.is_enabled = False
+                    db.add(rem)
+                    continue
+                bill = self.bill_repo.get_bill(db, rem.bill_id, rem.user_id)
+                # Never send reminders for paid, archived, or inactive bills
+                if not bill or not bill.is_active or bill.stored_status in {"paid", "archived"}:
+                    rem.delivery_status = "cancelled"
+                    rem.is_enabled = False
+                    db.add(rem)
+                    continue
+                derived = compute_bill_derived_status(bill, today=user_today)
+                if derived == "paid":
+                    rem.delivery_status = "cancelled"
+                    rem.is_enabled = False
+                    db.add(rem)
+                    continue
+                notif_type, title, body = self._build_reminder_copy(bill, rem.offset_days, user_today)
+                amount_display = self._format_amount_text(bill)
+                due_date_display = bill.due_date.strftime("%d/%m/%Y")
+                dedupe = f"bill-alert:{bill.id}:{user_today.isoformat()}:{notif_type}"
+                rel_bill_id = bill.id
 
-            notif_type, title, body = self._build_reminder_copy(bill, rem.offset_days, user_today)
             outcomes: dict[str, dict[str, str]] = dict(rem.channel_outcomes or {})
             channels = rem.channels or ["in_app"]
 
@@ -209,9 +415,8 @@ class ReminderService:
             any_failed = False
             any_unavailable = False
 
-            # 1. In-app notification channel (dedupe once per bill, type & calendar day in user timezone)
+            # 1. In-app notification channel (dedupe once per item, type & calendar day in user timezone)
             if "in_app" in channels:
-                dedupe = f"bill-alert:{bill.id}:{user_today.isoformat()}:{notif_type}"
                 existing_notif = self.bill_repo.get_notification_by_dedupe(db, dedupe)
                 if not existing_notif:
                     self.bill_repo.create_notification(
@@ -221,7 +426,9 @@ class ReminderService:
                             title=title,
                             message=body,
                             notification_type=notif_type,
-                            related_bill_id=bill.id,
+                            related_bill_id=rel_bill_id,
+                            related_subscription_id=rel_sub_id,
+                            related_loan_id=rel_loan_id,
                             dedupe_key=dedupe,
                         ),
                     )
@@ -246,9 +453,9 @@ class ReminderService:
                     ok, st, det = email_service.send_bill_reminder_email(
                         to_email=user.email,
                         full_name=user.full_name,
-                        bill_name=bill.bill_name,
-                        amount_display=self._format_amount_text(bill),
-                        due_date_display=bill.due_date.strftime("%d/%m/%Y"),
+                        bill_name=title,
+                        amount_display=amount_display,
+                        due_date_display=due_date_display,
                         status_note=body,
                     )
                     outcomes["email"] = {"status": st, "detail": det}

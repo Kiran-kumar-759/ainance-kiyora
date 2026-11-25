@@ -83,7 +83,7 @@ class TransactionService:
         if (
             source == "manual"
             and req.transaction_type == "expense"
-            and account.account_type != "credit_card"
+            and account.account_type not in {"credit_card", "loan_liability"}
             and req.amount > account.current_balance
         ):
             raise HTTPException(
@@ -266,7 +266,7 @@ class TransactionService:
                 tx.notes = req.notes.strip() if req.notes else None
 
             self.transaction_repo.update(db, tx)
-            if (amount_changed or date_changed) and tx.account.account_type != "credit_card":
+            if (amount_changed or date_changed) and tx.account.account_type not in {"credit_card", "loan_liability"}:
                 db.refresh(tx.account)
                 if tx.account.current_balance < Decimal("0.00"):
                     raise HTTPException(
@@ -306,7 +306,7 @@ class TransactionService:
                 account_type=tx.account.account_type,
             )
 
-            if account_ref.account_type != "credit_card":
+            if account_ref.account_type not in {"credit_card", "loan_liability"}:
                 db.refresh(account_ref)
                 if account_ref.current_balance < Decimal("0.00"):
                     raise HTTPException(

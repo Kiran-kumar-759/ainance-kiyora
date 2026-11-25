@@ -132,7 +132,10 @@ class BillReminderResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    bill_id: uuid.UUID
+    bill_id: uuid.UUID | None = None
+    subscription_id: uuid.UUID | None = None
+    loan_id: uuid.UUID | None = None
+    reminder_scope: str = "bill"
     offset_days: int
     reminder_at: dt.datetime
     channels: list[str]
@@ -341,6 +344,8 @@ class NotificationResponse(BaseModel):
     notification_type: str
     related_bill_id: uuid.UUID | None = None
     related_payment_id: uuid.UUID | None = None
+    related_subscription_id: uuid.UUID | None = None
+    related_loan_id: uuid.UUID | None = None
     is_read: bool
     read_at: dt.datetime | None = None
     created_at: dt.datetime

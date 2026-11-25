@@ -28,6 +28,8 @@ if TYPE_CHECKING:
         FinancialTransaction,
         FinancialTransfer,
     )
+    from app.models.loans import Loan
+    from app.models.subscriptions import Subscription
     from app.models.user import User
 
 
@@ -300,12 +302,27 @@ class BillReminder(Base):
         index=True,
         nullable=False,
     )
-    bill_id: Mapped[uuid.UUID] = mapped_column(
+    bill_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid,
         ForeignKey("bills.id", ondelete="CASCADE"),
         index=True,
-        nullable=False,
+        nullable=True,
     )
+    subscription_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("subscriptions.id", ondelete="CASCADE"),
+        index=True,
+        nullable=True,
+    )
+    loan_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("loans.id", ondelete="CASCADE"),
+        index=True,
+        nullable=True,
+    )
+    reminder_scope: Mapped[str] = mapped_column(
+        String(30), default="bill", index=True, nullable=False
+    )  # bill, subscription, loan_emi
     offset_days: Mapped[int] = mapped_column(Integer, nullable=False)
     reminder_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), index=True, nullable=False
@@ -343,7 +360,11 @@ class BillReminder(Base):
     )
 
     user: Mapped["User"] = relationship("User")
-    bill: Mapped["Bill"] = relationship("Bill", back_populates="reminders")
+    bill: Mapped["Bill | None"] = relationship("Bill", back_populates="reminders")
+    subscription: Mapped["Subscription | None"] = relationship(
+        "Subscription", back_populates="reminders"
+    )
+    loan: Mapped["Loan | None"] = relationship("Loan", back_populates="reminders")
 
 
 class BillDocument(Base):
@@ -403,6 +424,16 @@ class Notification(Base):
     related_payment_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid,
         ForeignKey("bill_payments.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    related_subscription_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("subscriptions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    related_loan_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("loans.id", ondelete="SET NULL"),
         nullable=True,
     )
     is_read: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

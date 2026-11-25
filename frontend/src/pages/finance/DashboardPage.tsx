@@ -83,7 +83,7 @@ function adaptLegacyDashboard(legacy: FinancialDashboard): AnalyticsDashboard {
       institution_name: a.institution_name,
       account_type: a.account_type,
       current_balance: a.current_balance,
-      is_liability: a.account_type === 'credit_card',
+      is_liability: a.account_type === 'credit_card' || a.account_type === 'loan_liability',
       currency: a.currency,
       source: a.source,
       status: a.status,
@@ -563,12 +563,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, userNa
                   <div className="flex items-center space-x-3">
                     <div
                       className={`w-9 h-9 rounded-lg flex items-center justify-center ${
-                        acc.account_type === 'credit_card'
+                        acc.account_type === 'credit_card' || acc.account_type === 'loan_liability'
                           ? 'bg-rose-50 text-rose-600'
                           : 'bg-blue-50 text-blue-600'
                       }`}
                     >
-                      {acc.account_type === 'credit_card' ? (
+                      {acc.account_type === 'credit_card' || acc.account_type === 'loan_liability' ? (
                         <CreditCard className="w-4 h-4" />
                       ) : (
                         <Wallet className="w-4 h-4" />
@@ -587,7 +587,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, userNa
                   <div className="text-right">
                     <div
                       className={`text-sm font-bold ${
-                        acc.account_type === 'credit_card' ? 'text-rose-600' : 'text-gray-900'
+                        acc.account_type === 'credit_card' || acc.account_type === 'loan_liability'
+                          ? 'text-rose-600'
+                          : 'text-gray-900'
                       }`}
                     >
                       {formatINR(acc.current_balance)}

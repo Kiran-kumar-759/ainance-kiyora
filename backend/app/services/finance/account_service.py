@@ -190,7 +190,7 @@ class AccountService:
                 )
 
             db.refresh(account)
-            if account.account_type != "credit_card" and account.current_balance < Decimal("0.00"):
+            if account.account_type not in {"credit_card", "loan_liability"} and account.current_balance < Decimal("0.00"):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=(
@@ -251,7 +251,7 @@ class AccountService:
         for a in accounts:
             if a.status != "active":
                 continue
-            if a.account_type == "credit_card":
+            if a.account_type in {"credit_card", "loan_liability"}:
                 total_credit_liabilities += a.current_balance
             else:
                 total_assets += a.current_balance

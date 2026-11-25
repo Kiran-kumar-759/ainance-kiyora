@@ -24,6 +24,18 @@ from app.models.finance import (
     LedgerJournal,
 )
 from app.models.imports import ImportBatch, ImportMappingProfile, ImportRow
+from app.models.loans import (
+    Loan,
+    LoanInstallment,
+    LoanInterestRateHistory,
+    LoanPayment,
+)
+from app.models.subscriptions import (
+    Subscription,
+    SubscriptionCandidateDecision,
+    SubscriptionPayment,
+    SubscriptionPriceHistory,
+)
 from app.models.system import SystemSetting
 from app.models.user import User
 
@@ -52,4 +64,12 @@ __all__ = [
     "BillReminder",
     "BillDocument",
     "Notification",
+    "Subscription",
+    "SubscriptionPriceHistory",
+    "SubscriptionPayment",
+    "SubscriptionCandidateDecision",
+    "Loan",
+    "LoanInstallment",
+    "LoanInterestRateHistory",
+    "LoanPayment",
 ]

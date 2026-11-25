@@ -165,6 +165,8 @@ export interface AppNotification {
   notification_type: string;
   related_bill_id?: string | null;
   related_payment_id?: string | null;
+  related_subscription_id?: string | null;
+  related_loan_id?: string | null;
   is_read: boolean;
   read_at?: string | null;
   created_at: string;

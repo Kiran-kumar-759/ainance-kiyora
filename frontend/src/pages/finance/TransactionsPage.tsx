@@ -403,6 +403,8 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
               <option value="csv_import">CSV Import</option>
               <option value="xlsx_import">XLSX Import</option>
               <option value="bill_payment">Bill Payment</option>
+              <option value="subscription_payment">Subscription Payment</option>
+              <option value="loan_payment">Loan Payment</option>
             </select>
           </div>
 

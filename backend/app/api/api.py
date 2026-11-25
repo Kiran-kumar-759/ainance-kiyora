@@ -5,9 +5,11 @@ from app.api.routes import (
     auth,
     bills,
     imports,
+    loans,
     notifications,
     onboarding,
     reports,
+    subscriptions,
     system,
     users,
 )
@@ -38,3 +40,5 @@ api_router.include_router(analytics.router)
 api_router.include_router(reports.router)
 api_router.include_router(bills.router)
 api_router.include_router(notifications.router)
+api_router.include_router(subscriptions.router)
+api_router.include_router(loans.router)

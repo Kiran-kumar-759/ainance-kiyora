@@ -68,6 +68,18 @@ SYSTEM_CATEGORIES = [
     {"name": "Travel", "type": "expense", "icon": "plane", "color": "#0ea5e9"},
     {"name": "Insurance", "type": "expense", "icon": "shield", "color": "#3b82f6"},
     {
+        "name": "Subscriptions",
+        "type": "expense",
+        "icon": "credit-card",
+        "color": "#8b5cf6",
+    },
+    {
+        "name": "Loan Interest",
+        "type": "expense",
+        "icon": "percent",
+        "color": "#f43f5e",
+    },
+    {
         "name": "Other Expenses",
         "type": "expense",
         "icon": "minus-circle",

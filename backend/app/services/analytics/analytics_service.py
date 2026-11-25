@@ -296,7 +296,7 @@ class AnalyticsService:
                 else acc.current_balance
             )
             balance = quantize_money(balance)
-            is_liability = acc.account_type == "credit_card"
+            is_liability = acc.account_type in {"credit_card", "loan_liability"}
             if is_liability:
                 total_liabilities += balance
             else:
@@ -352,7 +352,7 @@ class AnalyticsService:
         for row in deltas:
             d = row["entry_date"]
             amt = Decimal(row["amount"])
-            is_card = row["account_type"] == "credit_card"
+            is_card = row["account_type"] in {"credit_card", "loan_liability"}
             if is_card:
                 running_liabilities += amt if row["entry_type"] == "credit" else -amt
             else:
@@ -957,7 +957,7 @@ class AnalyticsService:
             institution_name=acc.institution_name,
             account_type=acc.account_type,
             current_balance=balance,
-            is_liability=acc.account_type == "credit_card",
+            is_liability=acc.account_type in {"credit_card", "loan_liability"},
             currency=acc.currency,
             source=acc.source,
             status=acc.status,

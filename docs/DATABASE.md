@@ -576,3 +576,21 @@ CREATE TABLE notifications (
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
 ```
+
+---
+
+## Phase 6: Subscriptions, Price History, Loans, Installments & Rate Revisions Schema
+
+Added in Alembic revision **`1c2a8c9f2c32_create_subscriptions_and_loans_phase_6_.py`** (`down_revision = '0fd42a428400'`):
+
+- **Extensions to Existing Tables:**
+  - `bill_reminders`: `bill_id` nullable; added `subscription_id`, `loan_id`, and `reminder_scope` (`bill`, `subscription`, `loan_emi`).
+  - `notifications`: added `related_subscription_id` and `related_loan_id`.
+  - `financial_accounts`: supports `account_type = 'loan_liability'` (`source = 'loan'`) integrated into double-entry liability calculations (`Total Credits - Total Debits`).
+- **Module A Tables (`subscriptions`, `subscription_price_history`, `subscription_payments`, `subscription_candidate_decisions`):**
+  - Partial unique index `uq_sub_payments_idempotency` on `(user_id, subscription_id, idempotency_key)`.
+  - Unique index `uq_sub_candidate_user_merchant` on `(user_id, merchant_key)`.
+- **Module B Tables (`loans`, `loan_installments`, `loan_interest_rate_history`, `loan_payments`):**
+  - `loans.liability_account_id` links directly to `financial_accounts(id)`.
+  - Partial unique index `uq_loan_installment_active_num` on `(loan_id, installment_number) WHERE status != 'cancelled'`.
+  - Partial unique index `uq_loan_payments_idempotency` on `(user_id, loan_id, idempotency_key)`.

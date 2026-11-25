@@ -46,8 +46,8 @@ class LedgerService:
         )
         self.ledger_repo.create_journal(db, journal)
 
-        if account_type == "credit_card":
-            # Opening liability: Credit card account, Debit opening balance equity offset
+        if account_type in {"credit_card", "loan_liability"}:
+            # Opening liability: Credit liability account, Debit opening balance equity offset
             self.ledger_repo.add_entry(
                 db,
                 LedgerEntry(
@@ -125,7 +125,7 @@ class LedgerService:
         self.ledger_repo.create_journal(db, journal)
 
         if transaction_type == "income":
-            if account_type == "credit_card":
+            if account_type in {"credit_card", "loan_liability"}:
                 # Income / refund credited to a credit card reduces outstanding liability
                 self.ledger_repo.add_entry(
                     db,
@@ -175,7 +175,7 @@ class LedgerService:
                 )
         else:
             # Expense
-            if account_type == "credit_card":
+            if account_type in {"credit_card", "loan_liability"}:
                 # Expense on credit card increases liability: Credit card, Debit expense
                 self.ledger_repo.add_entry(
                     db,

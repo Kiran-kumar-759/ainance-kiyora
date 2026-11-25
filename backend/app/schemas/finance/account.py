@@ -5,9 +5,11 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-AccountType = Literal["savings", "current", "cash", "credit_card", "digital_wallet", "other"]
+AccountType = Literal[
+    "savings", "current", "cash", "credit_card", "digital_wallet", "loan_liability", "other"
+]
 AccountStatus = Literal["active", "archived"]
-AccountSource = Literal["manual", "demo_bank"]
+AccountSource = Literal["manual", "demo_bank", "loan"]
 
 
 class AccountCreateRequest(BaseModel):

@@ -256,8 +256,18 @@ export const AppShell: React.FC<AppShellProps> = ({
           view: 'bills',
           active: currentView === 'bills',
         },
-        { name: 'Subscriptions', icon: CreditCard, futurePhase: 'Phase 7' },
-        { name: 'Loans & EMIs', icon: FileText, futurePhase: 'Phase 8' },
+        {
+          name: 'Subscriptions',
+          icon: CreditCard,
+          view: 'subscriptions',
+          active: currentView === 'subscriptions',
+        },
+        {
+          name: 'Loans & EMIs',
+          icon: FileText,
+          view: 'loans',
+          active: currentView === 'loans',
+        },
       ],
     },
     {
@@ -291,7 +301,7 @@ export const AppShell: React.FC<AppShellProps> = ({
               {config.appTitle}
             </span>
             <div className="text-[10px] text-slate-400 font-mono tracking-wider">
-              INDIA SAAS • Phase 5
+              INDIA SAAS • Phase 6
             </div>
           </div>
         </div>
@@ -389,7 +399,7 @@ export const AppShell: React.FC<AppShellProps> = ({
         </div>
         <div className="flex items-center justify-between">
           <span className="text-slate-400">Active Phase</span>
-          <span className="text-emerald-400 font-medium text-[11px]">Phase 5 (Bills)</span>
+          <span className="text-emerald-400 font-medium text-[11px]">Phase 6 (Subs &amp; Loans)</span>
         </div>
       </div>
     </div>
@@ -443,7 +453,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                   {config.appTitle}
                 </h1>
                 <Badge variant="info" className="whitespace-nowrap">
-                  Phase 5: Bills &amp; Reminders
+                  Phase 6: Subscriptions &amp; Loans
                 </Badge>
               </div>
               <p className="text-xs text-slate-500 hidden sm:block">
@@ -545,7 +555,13 @@ export const AppShell: React.FC<AppShellProps> = ({
                               onClick={() => {
                                 if (!n.is_read) void handleMarkNotificationRead(n.id);
                                 setNotificationsOpen(false);
-                                onNavigate('bills');
+                                if (n.related_subscription_id) {
+                                  onNavigate('subscriptions');
+                                } else if (n.related_loan_id) {
+                                  onNavigate('loans');
+                                } else {
+                                  onNavigate('bills');
+                                }
                               }}
                               className={`p-3 cursor-pointer hover:bg-slate-50 transition-colors ${
                                 n.is_read ? 'bg-white' : 'bg-emerald-50/40'

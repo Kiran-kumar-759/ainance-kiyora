@@ -70,8 +70,8 @@ class LedgerRepository:
         )
         total_credits = db.execute(credit_stmt).scalar() or Decimal("0.00")
 
-        if account_type == "credit_card":
-            # Outstanding liability owed on card
+        if account_type in {"credit_card", "loan_liability"}:
+            # Outstanding liability owed
             return Decimal(total_credits - total_debits)
         else:
             # Asset account (Savings, Current, Cash, Wallet, Other)

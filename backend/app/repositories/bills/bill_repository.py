@@ -190,6 +190,30 @@ class BillRepository:
             .all()
         )
 
+    def list_reminders_for_subscription(
+        self, db: Session, subscription_id: uuid.UUID
+    ) -> list[BillReminder]:
+        return list(
+            db.execute(
+                select(BillReminder)
+                .where(BillReminder.subscription_id == subscription_id)
+                .order_by(BillReminder.offset_days.desc())
+            )
+            .scalars()
+            .all()
+        )
+
+    def list_reminders_for_loan(self, db: Session, loan_id: uuid.UUID) -> list[BillReminder]:
+        return list(
+            db.execute(
+                select(BillReminder)
+                .where(BillReminder.loan_id == loan_id)
+                .order_by(BillReminder.offset_days.desc())
+            )
+            .scalars()
+            .all()
+        )
+
     def get_reminder_by_idempotency_key(
         self, db: Session, idempotency_key: str
     ) -> BillReminder | None:
