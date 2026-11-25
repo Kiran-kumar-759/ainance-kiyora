@@ -13,6 +13,7 @@ from app.schemas.assistant import (
     AiConversationUpdateRequest,
     AiMessageCreateRequest,
     AiMessageResponse,
+    ConfirmDraftActionRequest,
     RagReindexResponse,
     UserAiPreferenceResponse,
     UserAiPreferenceUpdateRequest,
@@ -184,3 +185,15 @@ def speak_assistant_text(
     _enforce_assistant_rate_limit(current_user.id, "voice_tts", max_requests=30)
     wav_bytes = synthesize_voice_speech(payload.text)
     return Response(content=wav_bytes, media_type="audio/wav")
+
+
+@router.post("/messages/{message_id}/confirm-action", response_model=AiMessageResponse)
+def confirm_assistant_message_action(
+    message_id: uuid.UUID,
+    payload: ConfirmDraftActionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(verify_csrf),
+):
+    _enforce_assistant_rate_limit(current_user.id, "confirm_action", max_requests=25)
+    return assistant_service.confirm_message_action(db, current_user, message_id, payload)

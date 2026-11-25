@@ -16,7 +16,10 @@ from app.services.assistant.finance_tools import (
     tool_get_upcoming_commitments,
 )
 from app.services.assistant.rag_service import retrieve_personal_documents
-from app.services.assistant.voice_service import try_parse_chat_action_draft
+from app.services.assistant.voice_service import (
+    execute_chat_action_draft,
+    try_parse_chat_action_draft,
+)
 from app.services.web_research.research_service import WebResearchService
 from app.services.web_research.source_validation import sanitize_untrusted_text
 
@@ -348,6 +351,7 @@ def run_assistant_turn(
     web_search_enabled: bool,
     web_provider: WebProviderId,
     include_personal_context: bool = True,
+    auto_execute: bool = False,
 ) -> dict[str, Any]:
     """
     Orchestrate read-only finance tools, tenant-scoped RAG, optional single-provider web research,
@@ -355,6 +359,35 @@ def run_assistant_turn(
     """
     draft_action = try_parse_chat_action_draft(db, user, query)
     if draft_action is not None:
+        tools_used = ["action_draft_parser"]
+        if auto_execute:
+            draft_action, executed = execute_chat_action_draft(
+                db, user, draft_action, execution_mode="auto", raise_on_incomplete=False
+            )
+            if executed:
+                tools_used.append("action_auto_executor")
+                section = (
+                    "Bills"
+                    if draft_action["action_type"] == "create_bill"
+                    else "Subscriptions"
+                    if draft_action["action_type"] == "create_subscription"
+                    else "Transactions"
+                )
+                msg = (
+                    f"Done — **Auto-Execute Actions** is enabled, so I added **{draft_action['executed_label']}** directly to your **{section}** section."
+                )
+                return {
+                    "content": msg,
+                    "provider_used": None,
+                    "llm_model": "action_auto_executor",
+                    "web_search_used": False,
+                    "tools_invoked": tools_used,
+                    "citations": [],
+                    "evidence_items": [],
+                    "draft_action": draft_action,
+                    "error_message": None,
+                }
+
         if draft_action["action_type"] == "create_bill":
             amt_txt = (
                 f"₹{draft_action['expected_amount']}"
@@ -363,7 +396,17 @@ def run_assistant_turn(
             )
             msg = (
                 f"I've prepared a **{draft_action['bill_name']}** draft for **{amt_txt}** due **{draft_action['due_date']}**.\n\n"
-                "For financial safety, nothing is added to your Bills ledger automatically — review the prefilled card below and click **Confirm & Add Bill** to save it."
+                "Review the prefilled card below and click **Confirm & Add Bill** to save it."
+            )
+        elif draft_action["action_type"] == "create_subscription":
+            amt_txt = (
+                f"₹{draft_action['amount']}"
+                if draft_action.get("amount")
+                else "an unspecified amount"
+            )
+            msg = (
+                f"I've prepared an OTT / subscription draft for **{draft_action['subscription_name']}** ({amt_txt} / {draft_action['billing_frequency']}, next renewal **{draft_action['next_renewal_date']}**).\n\n"
+                "Review the card below and click **Confirm & Add Subscription** to save it."
             )
         else:
             amt_txt = (
@@ -371,16 +414,21 @@ def run_assistant_turn(
                 if draft_action.get("amount")
                 else "an unspecified amount"
             )
+            extra = (
+                " Because the account was not named, auto-execute paused for you to pick the account below."
+                if auto_execute
+                else ""
+            )
             msg = (
-                f"I've prepared a **{draft_action['transaction_type']}** transaction draft for **{amt_txt}** on **{draft_action['transaction_date']}**.\n\n"
-                "For financial safety, nothing is recorded automatically — review the card below and click **Confirm & Save Expense**."
+                f"I've prepared a **{draft_action['transaction_type']}** transaction draft for **{amt_txt}** on **{draft_action['transaction_date']}**.{extra}\n\n"
+                "Review and confirm below to record it in your ledger."
             )
         return {
             "content": msg,
             "provider_used": None,
             "llm_model": "action_draft_parser",
             "web_search_used": False,
-            "tools_invoked": ["action_draft_parser"],
+            "tools_invoked": tools_used,
             "citations": [],
             "evidence_items": [],
             "draft_action": draft_action,

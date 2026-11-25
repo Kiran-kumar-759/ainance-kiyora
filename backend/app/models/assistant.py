@@ -33,6 +33,7 @@ class UserAiPreference(Base):
     )  # langsearch, firecrawl, tavily
     web_search_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     voice_read_aloud_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    auto_execute_actions: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     updated_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: dt.datetime.now(dt.UTC),

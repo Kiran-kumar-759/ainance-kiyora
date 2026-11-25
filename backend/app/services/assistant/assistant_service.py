@@ -2,6 +2,7 @@ import uuid
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.core.config import settings
 from app.models.assistant import AiConversation, AiMessage
@@ -14,6 +15,7 @@ from app.schemas.assistant import (
     AiConversationUpdateRequest,
     AiMessageCreateRequest,
     AiMessageResponse,
+    ConfirmDraftActionRequest,
     RagReindexResponse,
     UserAiPreferenceResponse,
     UserAiPreferenceUpdateRequest,
@@ -22,7 +24,10 @@ from app.schemas.assistant import (
 )
 from app.services.assistant.assistant_orchestrator import run_assistant_turn
 from app.services.assistant.rag_service import reindex_user_documents
-from app.services.assistant.voice_service import parse_voice_expense_transcript
+from app.services.assistant.voice_service import (
+    execute_chat_action_draft,
+    parse_voice_expense_transcript,
+)
 from app.services.web_research.registry import ALLOWED_PROVIDERS, list_provider_statuses
 
 
@@ -53,6 +58,8 @@ class AssistantService:
             pref.web_search_enabled = req.web_search_enabled
         if req.voice_read_aloud_enabled is not None:
             pref.voice_read_aloud_enabled = req.voice_read_aloud_enabled
+        if req.auto_execute_actions is not None:
+            pref.auto_execute_actions = req.auto_execute_actions
         db.add(pref)
         db.commit()
         db.refresh(pref)
@@ -179,6 +186,10 @@ class AssistantService:
         # Exclude the just-saved user message from prior history list so orchestrator appends context cleanly
         prior_history = [m for m in history if m.id != user_msg.id]
 
+        auto_execute = (
+            req.auto_execute if req.auto_execute is not None else pref.auto_execute_actions
+        )
+
         result = run_assistant_turn(
             db,
             user,
@@ -187,6 +198,7 @@ class AssistantService:
             web_search_enabled=web_enabled,
             web_provider=selected_provider,
             include_personal_context=req.include_personal_context,
+            auto_execute=auto_execute,
         )
 
         assistant_msg = AiMessage(
@@ -222,3 +234,37 @@ class AssistantService:
         self, db: Session, user: User, transcript: str
     ) -> VoiceExpenseDraftResponse:
         return parse_voice_expense_transcript(db, user, transcript)
+
+    def confirm_message_action(
+        self,
+        db: Session,
+        user: User,
+        message_id: uuid.UUID,
+        req: ConfirmDraftActionRequest,
+    ) -> AiMessageResponse:
+        msg = self.repo.get_message_by_id(db, user.id, message_id)
+        if msg is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Assistant message not found."
+            )
+        if not msg.draft_action or not isinstance(msg.draft_action, dict):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This message has no confirmable action draft.",
+            )
+
+        updated_draft, executed = execute_chat_action_draft(
+            db,
+            user,
+            msg.draft_action,
+            overrides=req.model_dump(exclude_none=True),
+            execution_mode="confirmed",
+            raise_on_incomplete=True,
+        )
+        if executed:
+            msg.draft_action = updated_draft
+            flag_modified(msg, "draft_action")
+            db.add(msg)
+            db.commit()
+            db.refresh(msg)
+        return AiMessageResponse.model_validate(msg)

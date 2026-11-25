@@ -79,3 +79,12 @@ class AssistantRepository:
     def touch_conversation(self, db: Session, conv: AiConversation) -> None:
         conv.updated_at = dt.datetime.now(dt.UTC)
         db.add(conv)
+
+    def get_message_by_id(
+        self, db: Session, user_id: uuid.UUID, message_id: uuid.UUID
+    ) -> AiMessage | None:
+        stmt = select(AiMessage).where(
+            AiMessage.id == message_id,
+            AiMessage.user_id == user_id,
+        )
+        return db.execute(stmt).scalar_one_or_none()

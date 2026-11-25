@@ -19,6 +19,7 @@ from app.models.finance import (
     LedgerEntry,
     LedgerJournal,
 )
+from app.models.subscriptions import Subscription
 from app.models.user import User
 from app.services.ai.groq_provider import GroqAiProvider
 from app.services.web_research.research_service import WebResearchService
@@ -61,6 +62,7 @@ def assistant_api_client() -> Generator[tuple[TestClient, list[str]], None, None
                 cleanup_db.execute(delete(DocumentRagChunk).where(DocumentRagChunk.user_id.in_(uids)))
                 cleanup_db.execute(delete(Notification).where(Notification.user_id.in_(uids)))
                 cleanup_db.execute(delete(BillReminder).where(BillReminder.user_id.in_(uids)))
+                cleanup_db.execute(delete(Subscription).where(Subscription.user_id.in_(uids)))
                 cleanup_db.execute(delete(Bill).where(Bill.user_id.in_(uids)))
                 cleanup_db.execute(
                     delete(LedgerEntry).where(
@@ -461,20 +463,76 @@ def test_chat_bill_action_draft_and_no_unconfirmed_bill_write(assistant_api_clie
     bills_after = tc.get("/api/v1/bills").json()["total"]
     assert bills_after == bills_before
 
-    # Confirming with the parsed payload writes cleanly to Bills
-    create_res = tc.post(
-        "/api/v1/bills",
-        json={
-            "bill_name": draft["bill_name"],
-            "bill_category": draft["bill_category"],
-            "bill_type": draft["bill_type"],
-            "is_variable_amount": False,
-            "expected_amount": draft["expected_amount"],
-            "current_amount": draft["expected_amount"],
-            "currency": "INR",
-            "due_date": draft["due_date"],
-        },
+    # Confirming through /messages/{id}/confirm-action persists execution_status='executed' and blocks duplicates
+    confirm_res = tc.post(
+        f"/api/v1/assistant/messages/{body['id']}/confirm-action",
+        json={},
         headers={"X-CSRF-Token": csrf},
     )
-    assert create_res.status_code in (200, 201), create_res.text
+    assert confirm_res.status_code == 200, confirm_res.text
+    confirmed_msg = confirm_res.json()
+    assert confirmed_msg["draft_action"]["execution_status"] == "executed"
+    assert confirmed_msg["draft_action"]["requires_user_confirmation"] is False
     assert tc.get("/api/v1/bills").json()["total"] == bills_before + 1
+
+    # Reloading conversation preserves execution_status='executed', and re-confirming returns 409 Conflict (no duplicate!)
+    reloaded = tc.get(f"/api/v1/assistant/conversations/{conv['id']}").json()
+    saved_msg = next(m for m in reloaded["messages"] if m["id"] == body["id"])
+    assert saved_msg["draft_action"]["execution_status"] == "executed"
+
+    dup_res = tc.post(
+        f"/api/v1/assistant/messages/{body['id']}/confirm-action",
+        json={},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert dup_res.status_code == 409
+    assert tc.get("/api/v1/bills").json()["total"] == bills_before + 1
+
+
+def test_auto_execute_toggle_creates_bills_and_ott_subscriptions_automatically(assistant_api_client):
+    tc, created_emails = assistant_api_client
+    csrf = _register_and_login(tc, created_emails, "auto_exec")
+
+    pref_res = tc.patch(
+        "/api/v1/assistant/preferences",
+        json={"auto_execute_actions": True},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert pref_res.status_code == 200
+    assert pref_res.json()["auto_execute_actions"] is True
+
+    conv = tc.post(
+        "/api/v1/assistant/conversations",
+        json={"title": "Auto Actions", "web_search_enabled": False},
+        headers={"X-CSRF-Token": csrf},
+    ).json()
+
+    # 1. Auto-create an OTT Subscription directly from chat command
+    sub_msg = tc.post(
+        f"/api/v1/assistant/conversations/{conv['id']}/messages",
+        json={"content": "Add a Netflix subscription of 649 per month"},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert sub_msg.status_code == 200, sub_msg.text
+    sbody = sub_msg.json()
+    assert sbody["draft_action"]["action_type"] == "create_subscription"
+    assert sbody["draft_action"]["execution_status"] == "executed"
+    assert sbody["draft_action"]["execution_mode"] == "auto"
+    assert "Netflix" in sbody["draft_action"]["executed_label"]
+
+    subs = tc.get("/api/v1/subscriptions").json()
+    assert subs["total"] == 1
+    assert subs["items"][0]["subscription_name"] == "Netflix"
+
+    # 2. Auto-create a Bill directly from chat command using persisted auto_execute_actions preference
+    bill_msg = tc.post(
+        f"/api/v1/assistant/conversations/{conv['id']}/messages",
+        json={"content": "Add a water bill of 500 rupees due tomorrow"},
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert bill_msg.status_code == 200, bill_msg.text
+    bbody = bill_msg.json()
+    assert bbody["draft_action"]["action_type"] == "create_bill"
+    assert bbody["draft_action"]["execution_status"] == "executed"
+    assert bbody["draft_action"]["execution_mode"] == "auto"
+    assert tc.get("/api/v1/bills").json()["total"] == 1

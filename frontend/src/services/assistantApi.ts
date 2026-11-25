@@ -106,6 +106,7 @@ export const assistantApi = {
     default_web_provider?: WebProviderId;
     web_search_enabled?: boolean;
     voice_read_aloud_enabled?: boolean;
+    auto_execute_actions?: boolean;
   }): Promise<UserAiPreference> {
     return assistantRequest<UserAiPreference>('/api/v1/assistant/preferences', {
       method: 'PATCH',
@@ -159,6 +160,7 @@ export const assistantApi = {
       web_search_enabled?: boolean;
       web_provider?: WebProviderId;
       include_personal_context?: boolean;
+      auto_execute?: boolean;
     }
   ): Promise<AiMessage> {
     return assistantRequest<AiMessage>(
@@ -236,5 +238,18 @@ export const assistantApi = {
       throw new Error(`Speech synthesis failed (${response.status}).`);
     }
     return response.blob();
+  },
+
+  confirmMessageAction(
+    messageId: string,
+    payload: Record<string, unknown> = {}
+  ): Promise<AiMessage> {
+    return assistantRequest<AiMessage>(
+      `/api/v1/assistant/messages/${messageId}/confirm-action`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }
+    );
   },
 };

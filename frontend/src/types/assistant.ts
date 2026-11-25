@@ -20,6 +20,7 @@ export interface UserAiPreference {
   default_web_provider: WebProviderId;
   web_search_enabled: boolean;
   voice_read_aloud_enabled: boolean;
+  auto_execute_actions: boolean;
   updated_at: string;
 }
 
@@ -52,6 +53,10 @@ export interface EvidenceItem {
 
 export interface ChatBillDraftAction {
   action_type: 'create_bill';
+  execution_status?: 'pending_confirmation' | 'executed';
+  execution_mode?: 'manual' | 'confirmed' | 'auto';
+  created_id?: string;
+  executed_label?: string;
   bill_name: string;
   bill_category: string;
   provider_name?: string | null;
@@ -65,8 +70,31 @@ export interface ChatBillDraftAction {
   requires_user_confirmation: boolean;
 }
 
+export interface ChatSubscriptionDraftAction {
+  action_type: 'create_subscription';
+  execution_status?: 'pending_confirmation' | 'executed';
+  execution_mode?: 'manual' | 'confirmed' | 'auto';
+  created_id?: string;
+  executed_label?: string;
+  subscription_name: string;
+  provider_name?: string | null;
+  category: string;
+  amount?: string | number | null;
+  currency: string;
+  billing_frequency: 'weekly' | 'monthly' | 'quarterly' | 'half_yearly' | 'yearly' | 'custom';
+  start_date?: string;
+  next_renewal_date: string;
+  description?: string | null;
+  missing_fields?: string[];
+  requires_user_confirmation: boolean;
+}
+
 export interface ChatTransactionDraftAction {
   action_type: 'create_transaction';
+  execution_status?: 'pending_confirmation' | 'executed';
+  execution_mode?: 'manual' | 'confirmed' | 'auto';
+  created_id?: string;
+  executed_label?: string;
   transcript: string;
   transaction_type: 'expense' | 'income';
   amount?: string | number | null;
@@ -82,7 +110,11 @@ export interface ChatTransactionDraftAction {
   requires_user_confirmation: boolean;
 }
 
-export type ChatDraftAction = ChatBillDraftAction | ChatTransactionDraftAction | Record<string, unknown>;
+export type ChatDraftAction =
+  | ChatBillDraftAction
+  | ChatSubscriptionDraftAction
+  | ChatTransactionDraftAction
+  | Record<string, unknown>;
 
 export interface AiMessage {
   id: string;

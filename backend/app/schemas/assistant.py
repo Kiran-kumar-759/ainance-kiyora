@@ -30,6 +30,7 @@ class UserAiPreferenceResponse(BaseModel):
     default_web_provider: WebProviderId
     web_search_enabled: bool
     voice_read_aloud_enabled: bool
+    auto_execute_actions: bool
     updated_at: dt.datetime
 
 
@@ -37,6 +38,7 @@ class UserAiPreferenceUpdateRequest(BaseModel):
     default_web_provider: WebProviderId | None = None
     web_search_enabled: bool | None = None
     voice_read_aloud_enabled: bool | None = None
+    auto_execute_actions: bool | None = None
 
 
 class CitationItem(BaseModel):
@@ -135,6 +137,31 @@ class AiMessageCreateRequest(BaseModel):
     web_search_enabled: bool | None = None
     web_provider: WebProviderId | None = None
     include_personal_context: bool = True
+    auto_execute: bool | None = None
+
+
+class ConfirmDraftActionRequest(BaseModel):
+    bill_name: str | None = None
+    bill_category: str | None = None
+    provider_name: str | None = None
+    bill_type: Literal["one_time", "recurring"] | None = None
+    frequency: Literal["weekly", "monthly", "quarterly", "half_yearly", "yearly", "custom"] | None = None
+    expected_amount: Decimal | None = None
+    due_date: dt.date | None = None
+
+    subscription_name: str | None = None
+    category: str | None = None
+    amount: Decimal | None = None
+    billing_frequency: Literal["weekly", "monthly", "quarterly", "half_yearly", "yearly", "custom"] | None = None
+    next_renewal_date: dt.date | None = None
+
+    transaction_type: Literal["expense", "income"] | None = None
+    account_id: uuid.UUID | None = None
+    category_id: uuid.UUID | None = None
+    description: str | None = None
+    merchant_payee: str | None = None
+    transaction_date: dt.date | None = None
+    notes: str | None = None
 
 
 class VoiceExpenseParseRequest(BaseModel):

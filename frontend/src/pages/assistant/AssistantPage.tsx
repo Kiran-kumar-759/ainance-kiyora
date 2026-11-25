@@ -22,13 +22,13 @@ import {
   X,
 } from 'lucide-react';
 import { assistantApi } from '../../services/assistantApi';
-import { billsApi } from '../../services/billsApi';
 import { financeApi } from '../../services/financeApi';
 import {
   AiConversationDetail,
   AiConversationSummary,
   AiMessage,
   ChatBillDraftAction,
+  ChatSubscriptionDraftAction,
   ChatTransactionDraftAction,
   EvidenceItem,
   UserAiPreference,
@@ -324,6 +324,7 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
   const [selectedProvider, setSelectedProvider] = useState<WebProviderId>('tavily');
   const [webSearchEnabled, setWebSearchEnabled] = useState<boolean>(true);
   const [includePersonalContext, setIncludePersonalContext] = useState<boolean>(true);
+  const [autoExecuteActions, setAutoExecuteActions] = useState<boolean>(false);
 
   const [conversations, setConversations] = useState<AiConversationSummary[]>([]);
   const [activeConversation, setActiveConversation] = useState<AiConversationDetail | null>(null);
@@ -384,8 +385,17 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
     >
   >({});
   const [savingMsgDraftId, setSavingMsgDraftId] = useState<string | null>(null);
-  const [confirmedMsgDrafts, setConfirmedMsgDrafts] = useState<
-    Record<string, { kind: 'bill' | 'transaction'; label: string }>
+  const [subDraftEdits, setSubDraftEdits] = useState<
+    Record<
+      string,
+      {
+        subscription_name: string;
+        category: string;
+        amount: string;
+        billing_frequency: 'weekly' | 'monthly' | 'quarterly' | 'half_yearly' | 'yearly' | 'custom';
+        next_renewal_date: string;
+      }
+    >
   >({});
   const [activeDraftMessageId, setActiveDraftMessageId] = useState<string | null>(null);
 
@@ -415,6 +425,7 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
       setPreferences(prefs);
       setSelectedProvider(prefs.default_web_provider);
       setWebSearchEnabled(prefs.web_search_enabled);
+      setAutoExecuteActions(Boolean(prefs.auto_execute_actions));
       setConversations(convList);
 
       if (convList.length > 0) {
@@ -499,6 +510,22 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
       setPreferences(updated);
     } catch (err) {
       setError((err as Error)?.message || 'Failed to update web research preference.');
+    }
+  };
+
+  const handleToggleAutoExecute = async (next: boolean) => {
+    setAutoExecuteActions(next);
+    setError(null);
+    try {
+      const updated = await assistantApi.updatePreferences({ auto_execute_actions: next });
+      setPreferences(updated);
+      setStatusNotice(
+        next
+          ? 'Auto-Execute Actions enabled: bills and subscriptions mentioned in chat will be added automatically.'
+          : 'Auto-Execute Actions turned off: you will review and confirm drafts manually before anything is saved.'
+      );
+    } catch (err) {
+      setError((err as Error)?.message || 'Failed to update auto-execute preference.');
     }
   };
 
@@ -748,6 +775,7 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
         web_search_enabled: webSearchEnabled,
         web_provider: selectedProvider,
         include_personal_context: includePersonalContext,
+        auto_execute: autoExecuteActions,
       });
 
       const refreshed = await assistantApi.getConversation(targetConv.id);
@@ -960,35 +988,58 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
     setSavingDraft(true);
     setError(null);
     try {
-      await financeApi.createTransaction({
-        account_id: draftAccountId,
-        transaction_type: draftType,
-        amount: draftAmount,
-        currency: 'INR',
-        category_id: draftCategoryId || null,
-        description: draftDescription.trim() || 'Voice expense entry',
-        merchant_payee: draftMerchant.trim() || null,
-        transaction_date: draftDate,
-        notes: voiceDraft?.transcript ? `Voice transcript: ${voiceDraft.transcript}` : null,
-      });
+      if (activeDraftMessageId) {
+        const updatedMsg = await assistantApi.confirmMessageAction(activeDraftMessageId, {
+          account_id: draftAccountId,
+          transaction_type: draftType,
+          amount: draftAmount,
+          category_id: draftCategoryId || null,
+          description: draftDescription.trim() || 'Voice expense entry',
+          merchant_payee: draftMerchant.trim() || null,
+          transaction_date: draftDate,
+          notes: voiceDraft?.transcript ? `Voice transcript: ${voiceDraft.transcript}` : null,
+        });
+        setActiveConversation((prev) =>
+          prev
+            ? {
+                ...prev,
+                messages: prev.messages.map((m) => (m.id === updatedMsg.id ? updatedMsg : m)),
+              }
+            : prev
+        );
+        setActiveDraftMessageId(null);
+      } else {
+        await financeApi.createTransaction({
+          account_id: draftAccountId,
+          transaction_type: draftType,
+          amount: draftAmount,
+          currency: 'INR',
+          category_id: draftCategoryId || null,
+          description: draftDescription.trim() || 'Voice expense entry',
+          merchant_payee: draftMerchant.trim() || null,
+          transaction_date: draftDate,
+          notes: voiceDraft?.transcript ? `Voice transcript: ${voiceDraft.transcript}` : null,
+        });
+      }
       setVoiceDraft(null);
       setInputText('');
-      if (activeDraftMessageId) {
-        setConfirmedMsgDrafts((prev) => ({
-          ...prev,
-          [activeDraftMessageId]: {
-            kind: 'transaction',
-            label: `${draftDescription.trim() || 'Transaction'} (₹${draftAmount}) saved`,
-          },
-        }));
-        setActiveDraftMessageId(null);
-      }
       setStatusNotice('Confirmed transaction saved to your financial ledger.');
     } catch (err) {
       setError((err as Error)?.message || 'Unable to save confirmed transaction.');
     } finally {
       setSavingDraft(false);
     }
+  };
+
+  const replaceConversationMessage = (updatedMsg: AiMessage) => {
+    setActiveConversation((prev) =>
+      prev
+        ? {
+            ...prev,
+            messages: prev.messages.map((m) => (m.id === updatedMsg.id ? updatedMsg : m)),
+          }
+        : prev
+    );
   };
 
   const handleConfirmChatBillDraft = async (msgId: string, base: ChatBillDraftAction) => {
@@ -1009,30 +1060,54 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
     setSavingMsgDraftId(msgId);
     setError(null);
     try {
-      const created = await billsApi.createBill({
+      const updatedMsg = await assistantApi.confirmMessageAction(msgId, {
         bill_name: billName,
         bill_category: billCategory,
         provider_name: providerName || null,
         bill_type: billType,
         frequency: billType === 'recurring' ? freq : null,
-        is_variable_amount: false,
         expected_amount: Number(amt).toFixed(2),
-        current_amount: Number(amt).toFixed(2),
-        currency: 'INR',
         due_date: dueDate,
-        description: base.description || `Added via AI Assistant: ${billName}`,
-        reminder_enabled: true,
       });
-      setConfirmedMsgDrafts((prev) => ({
-        ...prev,
-        [msgId]: {
-          kind: 'bill',
-          label: `${created.bill_name} (₹${amt}, due ${dueDate})`,
-        },
-      }));
-      setStatusNotice(`Bill "${created.bill_name}" added cleanly to Bills.`);
+      replaceConversationMessage(updatedMsg);
+      setStatusNotice(`Bill "${billName}" added cleanly to Bills.`);
     } catch (err) {
       setError((err as Error)?.message || 'Failed to add bill to Bills.');
+    } finally {
+      setSavingMsgDraftId(null);
+    }
+  };
+
+  const handleConfirmChatSubscriptionDraft = async (
+    msgId: string,
+    base: ChatSubscriptionDraftAction
+  ) => {
+    const edited = subDraftEdits[msgId];
+    const subName = (edited?.subscription_name ?? base.subscription_name ?? '').trim();
+    const category = edited?.category ?? base.category ?? 'ott_streaming';
+    const amt = edited?.amount ?? (base.amount != null ? String(base.amount) : '');
+    const billingFrequency = edited?.billing_frequency ?? base.billing_frequency ?? 'monthly';
+    const nextRenewalDate = edited?.next_renewal_date ?? base.next_renewal_date;
+
+    if (!subName || !amt || Number(amt) <= 0 || !nextRenewalDate) {
+      setError('Please enter a valid subscription name, positive amount, and renewal date.');
+      return;
+    }
+
+    setSavingMsgDraftId(msgId);
+    setError(null);
+    try {
+      const updatedMsg = await assistantApi.confirmMessageAction(msgId, {
+        subscription_name: subName,
+        category,
+        amount: Number(amt).toFixed(2),
+        billing_frequency: billingFrequency,
+        next_renewal_date: nextRenewalDate,
+      });
+      replaceConversationMessage(updatedMsg);
+      setStatusNotice(`Subscription "${subName}" added cleanly to Subscriptions.`);
+    } catch (err) {
+      setError((err as Error)?.message || 'Failed to add subscription.');
     } finally {
       setSavingMsgDraftId(null);
     }
@@ -1080,24 +1155,44 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
 
   const renderDraftActionCard = (msg: AiMessage) => {
     if (!msg.draft_action || typeof msg.draft_action !== 'object') return null;
-    const actionType = (msg.draft_action as { action_type?: string }).action_type;
-    const confirmed = confirmedMsgDrafts[msg.id];
+    const draftObj = msg.draft_action as {
+      action_type?: string;
+      execution_status?: string;
+      execution_mode?: string;
+      executed_label?: string;
+    };
+    const actionType = draftObj.action_type;
 
-    if (confirmed) {
+    if (draftObj.execution_status === 'executed') {
+      const targetView =
+        actionType === 'create_bill'
+          ? 'bills'
+          : actionType === 'create_subscription'
+          ? 'subscriptions'
+          : 'transactions';
+      const targetLabel =
+        actionType === 'create_bill'
+          ? 'Bills'
+          : actionType === 'create_subscription'
+          ? 'Subscriptions'
+          : 'Transactions';
       return (
-        <div className="mt-3 p-3 rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-900 text-xs flex items-center justify-between gap-2">
+        <div className="mt-3 p-3 rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-900 text-xs flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center space-x-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
             <span>
-              <strong>Saved:</strong> {confirmed.label}
+              <strong>
+                {draftObj.execution_mode === 'auto' ? 'Auto-Executed & Saved:' : 'Confirmed & Saved:'}
+              </strong>{' '}
+              {draftObj.executed_label || `${targetLabel} entry created`}
             </span>
           </div>
           <button
             type="button"
-            onClick={() => onNavigate(confirmed.kind === 'bill' ? 'bills' : 'transactions')}
+            onClick={() => onNavigate(targetView)}
             className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shrink-0"
           >
-            Open {confirmed.kind === 'bill' ? 'Bills' : 'Transactions'} →
+            Open {targetLabel} →
           </button>
         </div>
       );
@@ -1204,6 +1299,108 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
               className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-semibold"
             >
               {isSaving ? 'Adding Bill...' : 'Confirm & Add Bill'}
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    if (actionType === 'create_subscription') {
+      const base = msg.draft_action as ChatSubscriptionDraftAction;
+      const formVal = subDraftEdits[msg.id] || {
+        subscription_name: base.subscription_name || '',
+        category: base.category || 'ott_streaming',
+        amount: base.amount != null ? String(base.amount) : '',
+        billing_frequency: base.billing_frequency || 'monthly',
+        next_renewal_date: base.next_renewal_date || '',
+      };
+      const updateSubField = (patch: Partial<typeof formVal>) => {
+        setSubDraftEdits((prev) => ({
+          ...prev,
+          [msg.id]: { ...formVal, ...patch },
+        }));
+      };
+      const isSaving = savingMsgDraftId === msg.id;
+
+      return (
+        <div className="mt-3 p-3.5 rounded-xl border border-indigo-200 bg-white text-xs space-y-3 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="font-semibold text-indigo-900">
+              Pending OTT / Subscription Draft (Review &amp; Confirm)
+            </span>
+            <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 text-[11px]">
+              Not saved yet
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+            <label className="block space-y-1">
+              <span className="text-slate-600 font-medium">Service Name</span>
+              <input
+                type="text"
+                value={formVal.subscription_name}
+                onChange={(e) => updateSubField({ subscription_name: e.target.value })}
+                className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-slate-900"
+              />
+            </label>
+
+            <label className="block space-y-1">
+              <span className="text-slate-600 font-medium">Amount (INR)</span>
+              <input
+                type="number"
+                step="0.01"
+                min="0.01"
+                value={formVal.amount}
+                onChange={(e) => updateSubField({ amount: e.target.value })}
+                className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-slate-900"
+              />
+            </label>
+
+            <label className="block space-y-1">
+              <span className="text-slate-600 font-medium">Frequency</span>
+              <select
+                value={formVal.billing_frequency}
+                onChange={(e) =>
+                  updateSubField({
+                    billing_frequency: e.target.value as typeof formVal.billing_frequency,
+                  })
+                }
+                className="w-full rounded-lg border border-slate-300 px-2 py-1.5 bg-white text-slate-900"
+              >
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+                <option value="quarterly">Quarterly</option>
+                <option value="half_yearly">Half Yearly</option>
+                <option value="yearly">Yearly</option>
+              </select>
+            </label>
+
+            <label className="block space-y-1">
+              <span className="text-slate-600 font-medium">Next Renewal</span>
+              <input
+                type="date"
+                value={formVal.next_renewal_date}
+                onChange={(e) => updateSubField({ next_renewal_date: e.target.value })}
+                className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-slate-900"
+              />
+            </label>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => onNavigate('subscriptions')}
+              className="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 font-medium"
+            >
+              Open Subscriptions Page
+            </button>
+            <button
+              type="button"
+              disabled={isSaving}
+              onClick={() => handleConfirmChatSubscriptionDraft(msg.id, base)}
+              className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-semibold"
+            >
+              {isSaving ? 'Adding...' : 'Confirm & Add Subscription'}
             </button>
           </div>
         </div>
@@ -1460,6 +1657,24 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
             />
             <Database className="w-3.5 h-3.5 text-emerald-600" />
             <span>Personal Context</span>
+          </label>
+
+          <label
+            className={`inline-flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl border text-xs cursor-pointer ${
+              autoExecuteActions
+                ? 'border-emerald-300 bg-emerald-50 text-emerald-900 font-medium'
+                : 'border-slate-200 bg-white text-slate-700'
+            }`}
+            title="When ON, chat commands like adding bills or OTT subscriptions save automatically; when OFF, you review & confirm manually."
+          >
+            <input
+              type="checkbox"
+              checked={autoExecuteActions}
+              onChange={(e) => handleToggleAutoExecute(e.target.checked)}
+              className="rounded text-emerald-600"
+            />
+            <Sparkles className={`w-3.5 h-3.5 ${autoExecuteActions ? 'text-emerald-600' : 'text-amber-500'}`} />
+            <span>Auto-Execute Actions</span>
           </label>
 
           {speakingMessageId && (

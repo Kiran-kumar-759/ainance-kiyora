@@ -285,6 +285,7 @@ def try_parse_chat_action_draft(
 
         return {
             "action_type": "create_bill",
+            "execution_status": "pending_confirmation",
             "bill_name": bill_name,
             "bill_category": bill_category,
             "provider_name": None,
@@ -298,11 +299,79 @@ def try_parse_chat_action_draft(
             "requires_user_confirmation": True,
         }
 
+    # Check OTT / recurring Subscription intent
+    ott_catalog: list[tuple[str, str, str]] = [
+        ("netflix", "Netflix", "ott_streaming"),
+        ("amazon prime", "Amazon Prime Video", "ott_streaming"),
+        ("prime video", "Amazon Prime Video", "ott_streaming"),
+        ("hotstar", "Disney+ Hotstar", "ott_streaming"),
+        ("disney", "Disney+ Hotstar", "ott_streaming"),
+        ("sonyliv", "SonyLIV", "ott_streaming"),
+        ("sony liv", "SonyLIV", "ott_streaming"),
+        ("zee5", "ZEE5", "ott_streaming"),
+        ("jiocinema", "JioCinema", "ott_streaming"),
+        ("jio cinema", "JioCinema", "ott_streaming"),
+        ("youtube premium", "YouTube Premium", "ott_streaming"),
+        ("spotify", "Spotify", "music"),
+        ("apple music", "Apple Music", "music"),
+        ("icloud", "iCloud Storage", "cloud_storage"),
+        ("google one", "Google One", "cloud_storage"),
+        ("chatgpt", "ChatGPT Plus", "software_saas"),
+        ("swiggy one", "Swiggy One", "delivery_membership"),
+        ("zomato gold", "Zomato Gold", "delivery_membership"),
+        ("gym", "Gym Membership", "fitness"),
+    ]
+    matched_ott = next((item for item in ott_catalog if item[0] in lower), None)
+    is_sub_intent = bool(
+        matched_ott
+        or re.search(r"\b(?:ott|subscription|subscribe|streaming|plan|membership)\b", lower)
+    )
+    if is_sub_intent and not re.search(r"\b(?:spent|paid)\b", lower):
+        amount = _extract_amount(text)
+        sub_name = matched_ott[1] if matched_ott else "OTT Subscription"
+        sub_cat = matched_ott[2] if matched_ott else "ott_streaming"
+        billing_frequency = "monthly"
+        if "yearly" in lower or "annual" in lower or "per year" in lower:
+            billing_frequency = "yearly"
+        elif "quarterly" in lower:
+            billing_frequency = "quarterly"
+        elif "weekly" in lower or "per week" in lower:
+            billing_frequency = "weekly"
+        elif "half yearly" in lower or "6 months" in lower:
+            billing_frequency = "half_yearly"
+
+        due_date, has_explicit_date = _extract_relative_date(text, today)
+        from app.services.subscriptions.subscription_math import advance_subscription_renewal
+
+        next_renewal = (
+            due_date
+            if has_explicit_date
+            else advance_subscription_renewal(today, billing_frequency, today.day)
+        )
+        missing = ["amount"] if amount is None else []
+
+        return {
+            "action_type": "create_subscription",
+            "execution_status": "pending_confirmation",
+            "subscription_name": sub_name,
+            "provider_name": sub_name,
+            "category": sub_cat,
+            "amount": str(amount) if amount is not None else None,
+            "currency": "INR",
+            "billing_frequency": billing_frequency,
+            "start_date": today.isoformat(),
+            "next_renewal_date": next_renewal.isoformat(),
+            "description": text[:240],
+            "missing_fields": missing,
+            "requires_user_confirmation": True,
+        }
+
     # Otherwise check explicit expense/income entry command
     if re.search(r"\b(?:spent|paid|add\s+(?:an?\s+)?(?:expense|income|transaction)|log\s+(?:an?\s+)?(?:expense|income)|record\s+(?:an?\s+)?(?:expense|income))\b", lower):
         tx_draft = parse_voice_expense_transcript(db, user, text)
         return {
             "action_type": "create_transaction",
+            "execution_status": "pending_confirmation",
             "transcript": tx_draft.transcript,
             "transaction_type": tx_draft.transaction_type,
             "amount": str(tx_draft.amount) if tx_draft.amount is not None else None,
@@ -319,6 +388,168 @@ def try_parse_chat_action_draft(
         }
 
     return None
+
+
+def execute_chat_action_draft(
+    db: Session,
+    user: User,
+    draft_action: dict,
+    *,
+    overrides: dict | None = None,
+    execution_mode: str = "confirmed",
+    raise_on_incomplete: bool = True,
+) -> tuple[dict, bool]:
+    """
+    Execute a structured chat draft action (`create_bill`, `create_subscription`, or `create_transaction`)
+    against the authoritative Phase 2/5/6 domain services and return `(updated_draft, was_executed)`.
+    Enforces idempotency so an already-executed draft is never duplicated.
+    """
+    updated = dict(draft_action or {})
+    if updated.get("execution_status") == "executed":
+        if raise_on_incomplete:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This action has already been saved. Duplicate execution blocked.",
+            )
+        return updated, False
+
+    if overrides:
+        for k, v in overrides.items():
+            if v is not None:
+                updated[k] = str(v) if not isinstance(v, (str, bool, int, float)) else v
+
+    action_type = updated.get("action_type")
+    if action_type == "create_bill":
+        from app.schemas.bills import BillCreateRequest
+        from app.services.bills.bill_service import BillService
+
+        raw_amt = updated.get("expected_amount")
+        if raw_amt is None or Decimal(str(raw_amt)) <= Decimal("0"):
+            if raise_on_incomplete:
+                raise HTTPException(status_code=400, detail="Valid positive bill amount is required.")
+            return updated, False
+
+        amt = Decimal(str(raw_amt)).quantize(Decimal("0.01"))
+        due = dt.date.fromisoformat(str(updated["due_date"]))
+        bill_name = str(updated.get("bill_name") or "Scheduled Bill").strip()
+        bill_type = str(updated.get("bill_type") or "one_time")
+        freq = updated.get("frequency") if bill_type == "recurring" else None
+
+        req = BillCreateRequest(
+            bill_name=bill_name,
+            bill_category=str(updated.get("bill_category") or "other"),  # type: ignore[arg-type]
+            provider_name=updated.get("provider_name") or None,
+            description=updated.get("description") or f"Created via AI Assistant: {bill_name}",
+            bill_type=bill_type,  # type: ignore[arg-type]
+            frequency=freq,  # type: ignore[arg-type]
+            is_variable_amount=False,
+            expected_amount=amt,
+            current_amount=amt,
+            currency="INR",
+            due_date=due,
+            reminder_enabled=True,
+        )
+        created = BillService().create_bill(db, user, req)
+        updated["execution_status"] = "executed"
+        updated["execution_mode"] = execution_mode
+        updated["created_id"] = str(created.id)
+        updated["bill_name"] = created.bill_name
+        updated["bill_category"] = created.bill_category
+        updated["expected_amount"] = str(amt)
+        updated["due_date"] = created.due_date.isoformat()
+        updated["executed_label"] = f"{created.bill_name} (₹{amt}, due {created.due_date.isoformat()})"
+        updated["requires_user_confirmation"] = False
+        return updated, True
+
+    if action_type == "create_subscription":
+        from app.schemas.subscriptions import SubscriptionCreateRequest
+        from app.services.subscriptions.subscription_service import SubscriptionService
+
+        raw_amt = updated.get("amount")
+        if raw_amt is None or Decimal(str(raw_amt)) <= Decimal("0"):
+            if raise_on_incomplete:
+                raise HTTPException(
+                    status_code=400, detail="Valid positive subscription amount is required."
+                )
+            return updated, False
+
+        amt = Decimal(str(raw_amt)).quantize(Decimal("0.01"))
+        start_d = dt.date.fromisoformat(str(updated.get("start_date") or dt.date.today().isoformat()))
+        next_d = dt.date.fromisoformat(str(updated.get("next_renewal_date") or start_d.isoformat()))
+        sub_name = str(updated.get("subscription_name") or "OTT Subscription").strip()
+        billing_freq = str(updated.get("billing_frequency") or "monthly")
+
+        req = SubscriptionCreateRequest(
+            subscription_name=sub_name,
+            provider_name=updated.get("provider_name") or sub_name,
+            category=str(updated.get("category") or "ott_streaming"),  # type: ignore[arg-type]
+            description=updated.get("description") or f"Created via AI Assistant: {sub_name}",
+            amount=amt,
+            currency="INR",
+            billing_frequency=billing_freq,  # type: ignore[arg-type]
+            start_date=start_d,
+            next_renewal_date=next_d,
+            reminder_enabled=True,
+        )
+        created_sub = SubscriptionService().create_subscription(db, user, req)
+        updated["execution_status"] = "executed"
+        updated["execution_mode"] = execution_mode
+        updated["created_id"] = str(created_sub.id)
+        updated["subscription_name"] = created_sub.subscription_name
+        updated["category"] = created_sub.category
+        updated["amount"] = str(amt)
+        updated["billing_frequency"] = created_sub.billing_frequency
+        updated["next_renewal_date"] = created_sub.next_renewal_date.isoformat()
+        updated["executed_label"] = (
+            f"{created_sub.subscription_name} (₹{amt}/{created_sub.billing_frequency}, next {created_sub.next_renewal_date.isoformat()})"
+        )
+        updated["requires_user_confirmation"] = False
+        return updated, True
+
+    if action_type == "create_transaction":
+        import uuid as _uuid
+
+        from app.schemas.finance.transaction import TransactionCreateRequest
+        from app.services.finance.transaction_service import TransactionService
+
+        raw_amt = updated.get("amount")
+        raw_acc = updated.get("account_id")
+        if raw_amt is None or Decimal(str(raw_amt)) <= Decimal("0") or not raw_acc:
+            if raise_on_incomplete:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Account and positive amount are required to record a transaction.",
+                )
+            return updated, False
+
+        amt = Decimal(str(raw_amt)).quantize(Decimal("0.01"))
+        tx_date = dt.date.fromisoformat(str(updated.get("transaction_date") or dt.date.today().isoformat()))
+        cat_raw = updated.get("category_id")
+        req = TransactionCreateRequest(
+            account_id=_uuid.UUID(str(raw_acc)),
+            transaction_type=str(updated.get("transaction_type") or "expense"),  # type: ignore[arg-type]
+            amount=amt,
+            currency="INR",
+            category_id=_uuid.UUID(str(cat_raw)) if cat_raw else None,
+            description=str(updated.get("description") or "Assistant transaction")[:250],
+            merchant_payee=updated.get("merchant_payee") or None,
+            transaction_date=tx_date,
+            notes=updated.get("notes") or None,
+        )
+        created_tx = TransactionService().create_transaction(
+            db=db, user=user, req=req, source="manual", commit=True
+        )
+        updated["execution_status"] = "executed"
+        updated["execution_mode"] = execution_mode
+        updated["created_id"] = str(created_tx.id)
+        updated["amount"] = str(amt)
+        updated["executed_label"] = f"{created_tx.description} (₹{amt})"
+        updated["requires_user_confirmation"] = False
+        return updated, True
+
+    if raise_on_incomplete:
+        raise HTTPException(status_code=400, detail=f"Unsupported draft action '{action_type}'.")
+    return updated, False
 
 
 _MAX_AUDIO_BYTES = 8 * 1024 * 1024  # 8 MB cap

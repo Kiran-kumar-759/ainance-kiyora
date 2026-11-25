@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { AssistantPage } from '../pages/assistant/AssistantPage';
 import { assistantApi } from '../services/assistantApi';
-import { billsApi } from '../services/billsApi';
 import { financeApi } from '../services/financeApi';
 
 vi.mock('../services/assistantApi', () => ({
@@ -20,6 +19,7 @@ vi.mock('../services/assistantApi', () => ({
     parseVoiceExpense: vi.fn(),
     transcribeVoice: vi.fn(),
     synthesizeSpeech: vi.fn(),
+    confirmMessageAction: vi.fn(),
   },
 }));
 
@@ -28,12 +28,6 @@ vi.mock('../services/financeApi', () => ({
     listAccounts: vi.fn(),
     listCategories: vi.fn(),
     createTransaction: vi.fn(),
-  },
-}));
-
-vi.mock('../services/billsApi', () => ({
-  billsApi: {
-    createBill: vi.fn(),
   },
 }));
 
@@ -65,6 +59,7 @@ const basePrefs = {
   default_web_provider: 'tavily' as const,
   web_search_enabled: true,
   voice_read_aloud_enabled: false,
+  auto_execute_actions: false,
   updated_at: '2026-11-25T10:00:00Z',
 };
 
@@ -315,6 +310,7 @@ describe('AssistantPage (Phase 10)', () => {
         web_search_enabled: true,
         web_provider: 'tavily',
         include_personal_context: true,
+        auto_execute: false,
       });
     });
 
@@ -360,7 +356,7 @@ describe('AssistantPage (Phase 10)', () => {
     vi.unstubAllGlobals();
   });
 
-  it('renders inline Bill Draft confirmation card and creates bill only when user clicks Confirm & Add Bill', async () => {
+  it('persists Bill Draft confirmation on server message and replaces button permanently with Saved state', async () => {
     const convWithBillDraft = {
       ...sampleConversation,
       messages: [
@@ -375,6 +371,7 @@ describe('AssistantPage (Phase 10)', () => {
           evidence_items: [],
           draft_action: {
             action_type: 'create_bill' as const,
+            execution_status: 'pending_confirmation' as const,
             bill_name: 'Electricity Bill',
             bill_category: 'electricity',
             bill_type: 'one_time' as const,
@@ -389,10 +386,16 @@ describe('AssistantPage (Phase 10)', () => {
       ],
     };
     vi.mocked(assistantApi.getConversation).mockResolvedValue(convWithBillDraft);
-    vi.mocked(billsApi.createBill).mockResolvedValue({
-      id: 'bill-created-1',
-      bill_name: 'Electricity Bill',
-    } as never);
+    vi.mocked(assistantApi.confirmMessageAction).mockResolvedValue({
+      ...convWithBillDraft.messages[0],
+      draft_action: {
+        ...convWithBillDraft.messages[0].draft_action,
+        execution_status: 'executed' as const,
+        execution_mode: 'confirmed' as const,
+        executed_label: 'Electricity Bill (₹1200.00, due 2026-12-02)',
+        requires_user_confirmation: false,
+      },
+    });
 
     render(<AssistantPage onNavigate={mockNavigate} />);
 
@@ -400,12 +403,11 @@ describe('AssistantPage (Phase 10)', () => {
       expect(screen.getByRole('button', { name: /Confirm & Add Bill/i })).toBeInTheDocument();
     });
 
-    expect(billsApi.createBill).not.toHaveBeenCalled();
-
     fireEvent.click(screen.getByRole('button', { name: /Confirm & Add Bill/i }));
 
     await waitFor(() => {
-      expect(billsApi.createBill).toHaveBeenCalledWith(
+      expect(assistantApi.confirmMessageAction).toHaveBeenCalledWith(
+        'm-bill-1',
         expect.objectContaining({
           bill_name: 'Electricity Bill',
           bill_category: 'electricity',
@@ -415,6 +417,62 @@ describe('AssistantPage (Phase 10)', () => {
       );
     });
 
+    expect(screen.queryByRole('button', { name: /Confirm & Add Bill/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Open Bills →/i })).toBeInTheDocument();
+  });
+
+  it('toggles Auto-Execute Actions on and renders Auto-Executed & Saved subscription status', async () => {
+    vi.mocked(assistantApi.updatePreferences).mockResolvedValue({
+      ...basePrefs,
+      auto_execute_actions: true,
+    });
+    const convWithAutoSub = {
+      ...sampleConversation,
+      messages: [
+        {
+          id: 'm-sub-1',
+          conversation_id: 'conv-1',
+          role: 'assistant' as const,
+          content: 'Done — Auto-Execute Actions added Netflix.',
+          web_search_used: false,
+          tools_invoked: ['action_draft_parser', 'action_auto_executor'],
+          citations: [],
+          evidence_items: [],
+          draft_action: {
+            action_type: 'create_subscription' as const,
+            execution_status: 'executed' as const,
+            execution_mode: 'auto' as const,
+            executed_label: 'Netflix (₹649.00/monthly)',
+            subscription_name: 'Netflix',
+            category: 'ott_streaming',
+            amount: '649.00',
+            currency: 'INR',
+            billing_frequency: 'monthly' as const,
+            next_renewal_date: '2026-12-25',
+            requires_user_confirmation: false,
+          },
+          status: 'completed',
+          created_at: '2026-11-25T10:10:00Z',
+        },
+      ],
+    };
+    vi.mocked(assistantApi.getConversation).mockResolvedValue(convWithAutoSub);
+
+    render(<AssistantPage onNavigate={mockNavigate} />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Auto-Execute Actions/i)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText(/Auto-Execute Actions/i));
+
+    await waitFor(() => {
+      expect(assistantApi.updatePreferences).toHaveBeenCalledWith({
+        auto_execute_actions: true,
+      });
+    });
+
+    expect(screen.getByText(/Auto-Executed & Saved:/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Open Subscriptions →/i })).toBeInTheDocument();
   });
 });
