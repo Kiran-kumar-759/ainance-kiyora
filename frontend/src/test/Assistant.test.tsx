@@ -317,6 +317,9 @@ describe('AssistantPage (Phase 10)', () => {
         include_personal_context: true,
       });
     });
+
+    // Never auto-speak replies unless user explicitly clicks Read Aloud
+    expect(assistantApi.synthesizeSpeech).not.toHaveBeenCalled();
   });
 
   it('plays Read Aloud via backend WAV fallback when browser speechSynthesis is absent', async () => {

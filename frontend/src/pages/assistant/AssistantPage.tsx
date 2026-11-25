@@ -324,7 +324,6 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
   const [selectedProvider, setSelectedProvider] = useState<WebProviderId>('tavily');
   const [webSearchEnabled, setWebSearchEnabled] = useState<boolean>(true);
   const [includePersonalContext, setIncludePersonalContext] = useState<boolean>(true);
-  const [readAloudEnabled, setReadAloudEnabled] = useState<boolean>(false);
 
   const [conversations, setConversations] = useState<AiConversationSummary[]>([]);
   const [activeConversation, setActiveConversation] = useState<AiConversationDetail | null>(null);
@@ -416,7 +415,6 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
       setPreferences(prefs);
       setSelectedProvider(prefs.default_web_provider);
       setWebSearchEnabled(prefs.web_search_enabled);
-      setReadAloudEnabled(prefs.voice_read_aloud_enabled);
       setConversations(convList);
 
       if (convList.length > 0) {
@@ -501,26 +499,6 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
       setPreferences(updated);
     } catch (err) {
       setError((err as Error)?.message || 'Failed to update web research preference.');
-    }
-  };
-
-  const handleToggleReadAloud = async (next: boolean) => {
-    setReadAloudEnabled(next);
-    if (!next) {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
-      }
-      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-      }
-      setSpeakingMessageId(null);
-    }
-    try {
-      const updated = await assistantApi.updatePreferences({ voice_read_aloud_enabled: next });
-      setPreferences(updated);
-    } catch (err) {
-      setError((err as Error)?.message || 'Failed to update voice preference.');
     }
   };
 
@@ -787,10 +765,6 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
         ...prev.filter((c) => c.id !== refreshed.id),
       ]);
       setOpenEvidenceMsgIds((prev) => ({ ...prev, [assistantReply.id]: true }));
-
-      if (readAloudEnabled && ttsSupported) {
-        speakText(assistantReply);
-      }
     } catch (err) {
       setError((err as Error)?.message || 'Failed to send assistant message.');
     } finally {
@@ -1488,16 +1462,16 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
             <span>Personal Context</span>
           </label>
 
-          <label className="inline-flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white text-xs text-slate-700 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={readAloudEnabled}
-              onChange={(e) => handleToggleReadAloud(e.target.checked)}
-              className="rounded text-indigo-600"
-            />
-            <Volume2 className="w-3.5 h-3.5 text-purple-600" />
-            <span>Read Aloud</span>
-          </label>
+          {speakingMessageId && (
+            <button
+              type="button"
+              onClick={stopActivePlayback}
+              className="inline-flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-xs font-medium text-rose-700"
+            >
+              <VolumeX className="w-3.5 h-3.5" />
+              <span>Stop Audio</span>
+            </button>
+          )}
 
           <button
             type="button"
