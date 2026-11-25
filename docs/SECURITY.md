@@ -14,3 +14,12 @@
 - **Read-Only Ledger Guarantee & Voice Draft Confirmation:** The assistant has read-only finance tool functions only (`finance_tools.py`). Spoken transcripts parsed via `/api/v1/assistant/voice/parse-expense` never touch ledger/transaction tables directly and always require explicit user review and Save confirmation in the UI.
 - **SSRF & Prompt-Injection Defense:** External web URLs pass `is_safe_public_url` (rejecting non-HTTP/HTTPS schemes, `localhost`, `.local`, `.internal`, loopback, metadata, and private IP ranges). Untrusted web & OCR excerpts are stripped of control characters (`sanitize_untrusted_text`), bounded, and framed inside `<UNTRUSTED_EVIDENCE>` data-only delimiters.
 - **No Private Data in Public Search & No Silent Provider Fallback:** `sanitize_public_search_query` removes long account/phone numbers and email addresses before calling external search APIs. Selected providers never fall back silently to another provider upon failure or missing credentials.
+
+---
+
+# Phase 11 Hardening Controls (Integration & Production Release Readiness)
+
+- **HTTP Security Headers & Request Correlation:** All responses carry `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: camera=(), microphone=(self), geolocation=()`, `X-XSS-Protection: 0`, and `X-Request-ID`. API endpoints include `Cache-Control: no-store`; HTTPS deployments (`COOKIE_SECURE=true`) emit HSTS.
+- **Production Exposure & Host Controls:** OpenAPI/Swagger/ReDoc endpoints are disabled in `ENVIRONMENT=production`, CORS uses explicit allowlists, `ALLOWED_HOSTS` enables `TrustedHostMiddleware`, and `SECRET_KEY` length/wildcard CORS validation runs at settings startup.
+- **Webhook SSRF Protection:** Outbound SMS notifications validate `SMS_WEBHOOK_URL` against `is_safe_public_url` with `follow_redirects=False`.
+- **Stale Background Job Recovery & Shared Rate Limiting:** `IntelligenceRepository.claim_next_queued_job` recovers stale `processing` AI/forecasting jobs older than 10 minutes (`max_attempts` enforced) before `FOR UPDATE SKIP LOCKED` claiming, and `rate_limiter` supports Valkey shared counters with automatic in-memory fallback.

@@ -39,14 +39,16 @@ class Settings(BaseSettings):
     DB_POOL_TIMEOUT: int = 30
     DB_POOL_PRE_PING: bool = True
 
-    # CORS
+    # CORS & Host Security
     CORS_ORIGINS: list[str] | str = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ]
+    ALLOWED_HOSTS: list[str] | str = []
 
-    # Background tasks
+    # Background tasks & shared rate limiting
     REDIS_URL: str = "redis://127.0.0.1:6379/0"
+    RATE_LIMIT_USE_VALKEY: bool = True
 
     # Authentication & Session Settings (Phase 1)
     SESSION_COOKIE_NAME: str = "pfm_session"
@@ -165,16 +167,38 @@ class Settings(BaseSettings):
             return v
         return ["http://localhost:5173", "http://127.0.0.1:5173"]
 
+    @field_validator("ALLOWED_HOSTS", mode="before")
+    @classmethod
+    def assemble_allowed_hosts(cls, v: str | list[str]) -> list[str]:
+        if isinstance(v, str):
+            raw = v.strip()
+            if not raw:
+                return []
+            if raw.startswith("[") and raw.endswith("]"):
+                try:
+                    return [str(i).strip() for i in json.loads(raw) if str(i).strip()]
+                except Exception:
+                    pass
+            return [i.strip() for i in raw.split(",") if i.strip()]
+        if isinstance(v, list):
+            return [str(i).strip() for i in v if str(i).strip()]
+        return []
+
     @model_validator(mode="after")
     def validate_production_security(self) -> "Settings":
-        """Ensures production configuration cannot run with insecure cookies or default dev secret keys."""
+        """Ensures production configuration enforces HTTPS cookies, strong secrets, and safe CORS."""
         if self.ENVIRONMENT.lower() == "production":
             if not self.COOKIE_SECURE:
                 self.COOKIE_SECURE = True
-            if self.SECRET_KEY == "dev-insecure-secret-key-change-in-production-123456789":
+            if (
+                self.SECRET_KEY == "dev-insecure-secret-key-change-in-production-123456789"
+                or len(self.SECRET_KEY.strip()) < 32
+            ):
                 raise ValueError(
-                    "In production, SECRET_KEY must be configured with a strong secret."
+                    "In production, SECRET_KEY must be configured with a strong secret (>= 32 chars)."
                 )
+            if isinstance(self.CORS_ORIGINS, list) and "*" in self.CORS_ORIGINS:
+                raise ValueError("In production, wildcard '*' is forbidden in CORS_ORIGINS.")
         return self
 
     @property

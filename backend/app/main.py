@@ -1,13 +1,16 @@
 import logging
+import re
+import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.api.api import api_router
 from app.api.routes import health
-from app.core.config import settings
+from app.core.config import Settings, settings
 from app.core.logging import setup_logging
 from app.db.session import check_db_readiness, engine
 from app.services.ai.worker import ai_intelligence_worker
@@ -48,37 +51,85 @@ async def lifespan(app: FastAPI):
     logger.info("Database engine connections closed.")
 
 
-def create_application() -> FastAPI:
-    """Application factory configuring middleware, exception handlers, and routing."""
+_REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
+
+
+def create_application(runtime_settings: Settings | None = None) -> FastAPI:
+    """Application factory configuring security middleware, exception handlers, and routing."""
+    cfg = runtime_settings or settings
+    is_prod = cfg.ENVIRONMENT.lower() == "production"
+
     app = FastAPI(
-        title=settings.APP_NAME,
-        version="0.1.0",
-        description="Phase 0: Product Foundation + Functional Demo UI (India-first SaaS)",
-        openapi_url="/api/openapi.json",
-        docs_url="/api/docs",
-        redoc_url="/api/redoc",
+        title=cfg.APP_NAME,
+        version="1.0.0",
+        description="AI Personal Finance Manager — India-first multi-user SaaS",
+        openapi_url=None if is_prod else "/api/openapi.json",
+        docs_url=None if is_prod else "/api/docs",
+        redoc_url=None if is_prod else "/api/redoc",
         lifespan=lifespan,
     )
 
-    # Configure CORS
+    if cfg.ALLOWED_HOSTS:
+        app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(cfg.ALLOWED_HOSTS))
+
+    # Configure CORS with explicit allowlists instead of wildcards
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.CORS_ORIGINS,
+        allow_origins=list(cfg.CORS_ORIGINS),
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=[
+            "Accept",
+            "Authorization",
+            "Content-Type",
+            "X-CSRF-Token",
+            "X-Request-ID",
+        ],
+        expose_headers=["X-Request-ID"],
     )
 
-    # Safe error handling
+    @app.middleware("http")
+    async def security_headers_and_request_id(request: Request, call_next):
+        incoming_id = request.headers.get("X-Request-ID", "")
+        request_id = incoming_id if _REQUEST_ID_RE.match(incoming_id) else uuid.uuid4().hex
+        request.state.request_id = request_id
+
+        response = await call_next(request)
+        response.headers.setdefault("X-Request-ID", request_id)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers.setdefault(
+            "Permissions-Policy",
+            "camera=(), microphone=(self), geolocation=()",
+        )
+        response.headers.setdefault("X-XSS-Protection", "0")
+        if cfg.COOKIE_SECURE:
+            response.headers.setdefault(
+                "Strict-Transport-Security",
+                "max-age=31536000; includeSubDomains",
+            )
+        if request.url.path.startswith("/api/"):
+            response.headers.setdefault("Cache-Control", "no-store")
+        return response
+
+    # Safe error handling (never leak stack traces or internal credentials)
     @app.exception_handler(Exception)
     async def generic_exception_handler(request: Request, exc: Exception):
-        logger.error("Unhandled server exception at %s: %s", request.url.path, str(exc))
+        req_id = getattr(request.state, "request_id", None)
+        logger.error(
+            "Unhandled server exception [request_id=%s] at %s: %s",
+            req_id or "-",
+            request.url.path,
+            type(exc).__name__,
+        )
         return JSONResponse(
             status_code=500,
             content={
                 "error": "Internal Server Error",
                 "message": "An unexpected error occurred. Please try again later.",
                 "path": request.url.path,
+                "request_id": req_id,
             },
         )
 
@@ -86,7 +137,7 @@ def create_application() -> FastAPI:
     app.include_router(health.router)
 
     # Versioned API routes
-    app.include_router(api_router, prefix=settings.API_V1_PREFIX)
+    app.include_router(api_router, prefix=cfg.API_V1_PREFIX)
 
     return app
 

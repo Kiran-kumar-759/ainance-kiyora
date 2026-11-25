@@ -52,3 +52,9 @@
 - `WEB_RESEARCH_MAX_CONTENT_CHARS=4000` — Per-source excerpt character cap.
 - `ASSISTANT_MAX_CONTEXT_MESSAGES=12` — Bounded conversation turn history window passed to LLM synthesis.
 - Reuses `GROQ_ENABLED`, `GROQ_API_KEY`, and `GROQ_MODEL` (all disabled/blank in automated tests).
+
+
+## Phase 11 — Production Hardening, Host Allowlisting & Shared Rate Limiting
+- `ALLOWED_HOSTS=[]` — Optional comma-separated or JSON array of permitted `Host` headers enforced via `TrustedHostMiddleware`.
+- `RATE_LIMIT_USE_VALKEY=true` — Enables shared Valkey (`REDIS_URL`) rate limiting outside `ENVIRONMENT=test`, with automatic thread-safe in-memory fallback when Valkey is unreachable.
+- `ENVIRONMENT=production` enforces `COOKIE_SECURE=true`, rejects wildcard `*` in `CORS_ORIGINS`, enforces `len(SECRET_KEY) >= 32`, and disables `/api/docs`, `/api/redoc`, and `/api/openapi.json`.

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import httpx
 
 from app.core.config import settings
+from app.services.web_research.source_validation import is_safe_public_url
 
 logger = logging.getLogger(__name__)
 
@@ -62,9 +63,17 @@ class WebhookSmsAdapter(SmsProviderAdapter):
                 detail="SMS_WEBHOOK_URL or SMS_API_KEY is missing.",
                 provider="webhook",
             )
+        is_safe, cleaned_url, _ = is_safe_public_url(settings.SMS_WEBHOOK_URL)
+        if not is_safe or not cleaned_url:
+            return SmsDeliveryResult(
+                delivered=False,
+                status="failed",
+                detail="SMS_WEBHOOK_URL rejected by outbound SSRF security policy.",
+                provider="webhook",
+            )
         try:
             resp = httpx.post(
-                settings.SMS_WEBHOOK_URL,
+                cleaned_url,
                 json={
                     "to": phone_e164,
                     "sender_id": settings.SMS_SENDER_ID or "PFMIND",
@@ -72,6 +81,7 @@ class WebhookSmsAdapter(SmsProviderAdapter):
                 },
                 headers={"Authorization": f"Bearer {settings.SMS_API_KEY}"},
                 timeout=8.0,
+                follow_redirects=False,
             )
             if 200 <= resp.status_code < 300:
                 return SmsDeliveryResult(

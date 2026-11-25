@@ -385,7 +385,43 @@ class IntelligenceRepository:
         )
         return list(db.execute(stmt).scalars().all())
 
-    def claim_next_queued_job(self, db: Session) -> AiProcessingJob | None:
+    def recover_stale_processing_jobs(self, db: Session, *, stale_after_minutes: int = 10) -> int:
+        """
+        Recover or fail AI processing jobs stuck in 'processing' past stale_after_minutes
+        so worker crashes never leave uq_ai_active_job_per_user permanently wedged.
+        """
+        cutoff = dt.datetime.now(dt.UTC) - dt.timedelta(minutes=stale_after_minutes)
+        stale_jobs = list(
+            db.execute(
+                select(AiProcessingJob).where(
+                    AiProcessingJob.status == "processing",
+                    AiProcessingJob.started_at.is_not(None),
+                    AiProcessingJob.started_at < cutoff,
+                )
+            )
+            .scalars()
+            .all()
+        )
+        recovered = 0
+        for stale in stale_jobs:
+            if stale.attempt_count >= stale.max_attempts:
+                stale.status = "failed"
+                stale.completed_at = dt.datetime.now(dt.UTC)
+                stale.error_message = "AI job exceeded max recovery attempts after worker interruption."
+            else:
+                stale.status = "queued"
+                stale.started_at = None
+                stale.error_message = "Recovered stale processing job after worker timeout."
+            db.add(stale)
+            recovered += 1
+        if recovered:
+            db.commit()
+        return recovered
+
+    def claim_next_queued_job(
+        self, db: Session, *, stale_after_minutes: int = 10
+    ) -> AiProcessingJob | None:
+        self.recover_stale_processing_jobs(db, stale_after_minutes=stale_after_minutes)
         stmt = (
             select(AiProcessingJob)
             .where(AiProcessingJob.status == "queued")
@@ -395,6 +431,13 @@ class IntelligenceRepository:
         )
         job = db.execute(stmt).scalar_one_or_none()
         if job is None:
+            return None
+        if job.attempt_count >= job.max_attempts:
+            job.status = "failed"
+            job.completed_at = dt.datetime.now(dt.UTC)
+            job.error_message = "AI job reached max attempts before execution."
+            db.add(job)
+            db.commit()
             return None
         job.status = "processing"
         job.attempt_count += 1
