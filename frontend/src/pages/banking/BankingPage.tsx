@@ -9,11 +9,13 @@ import {
   Check,
   X,
   Unplug,
+  History,
 } from 'lucide-react';
 import { financeApi } from '../../services/financeApi';
 import {
   BankingConnection,
   BankingProviderInfo,
+  BankingSyncRun,
   DiscoveredAccount,
 } from '../../types/finance';
 import { formatINR, formatDate } from '../../lib/formatters';
@@ -34,6 +36,7 @@ export const BankingPage: React.FC<BankingPageProps> = ({ onNavigate }) => {
   const [selectedProvider, setSelectedProvider] = useState<BankingProviderInfo | null>(null);
   const [consentChecked, setConsentChecked] = useState<boolean>(false);
   const [isConnecting, setIsConnecting] = useState<boolean>(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
 
   // Discover accounts modal
   const [activeConnectionForDiscovery, setActiveConnectionForDiscovery] =
@@ -42,6 +45,14 @@ export const BankingPage: React.FC<BankingPageProps> = ({ onNavigate }) => {
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
   const [isDiscovering, setIsDiscovering] = useState<boolean>(false);
   const [isImporting, setIsImporting] = useState<boolean>(false);
+  const [discoverError, setDiscoverError] = useState<string | null>(null);
+
+  // Sync history modal & disconnect guard
+  const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
+  const [historyConnection, setHistoryConnection] = useState<BankingConnection | null>(null);
+  const [syncRuns, setSyncRuns] = useState<BankingSyncRun[]>([]);
+  const [isLoadingRuns, setIsLoadingRuns] = useState<boolean>(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
 
   const loadBankingData = async () => {
     setIsLoading(true);
@@ -68,20 +79,27 @@ export const BankingPage: React.FC<BankingPageProps> = ({ onNavigate }) => {
   const handleOpenConnect = (prov: BankingProviderInfo) => {
     setSelectedProvider(prov);
     setConsentChecked(false);
+    setConnectError(null);
   };
 
   const handleConnectProvider = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedProvider || !consentChecked) return;
+    if (!selectedProvider || !consentChecked || isConnecting) return;
 
     setIsConnecting(true);
+    setConnectError(null);
+    setError(null);
+    setSyncMessage(null);
     try {
-      await financeApi.connectDemoProvider(selectedProvider.provider_id, true);
+      const conn = await financeApi.connectDemoProvider(selectedProvider.provider_id, true);
       setSelectedProvider(null);
       await loadBankingData();
+      setSyncMessage(
+        `Connected ${conn.institution_name}. Click "Discover Accounts" to select accounts to import.`
+      );
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to establish demo connection.';
-      alert(msg);
+      setConnectError(msg);
     } finally {
       setIsConnecting(false);
     }
@@ -90,6 +108,8 @@ export const BankingPage: React.FC<BankingPageProps> = ({ onNavigate }) => {
   const handleOpenDiscover = async (conn: BankingConnection) => {
     setActiveConnectionForDiscovery(conn);
     setIsDiscovering(true);
+    setDiscoverError(null);
+    setDiscoveredAccounts([]);
     setSelectedAccountIds([]);
     try {
       const accounts = await financeApi.discoverBankingAccounts(conn.id);
@@ -99,55 +119,90 @@ export const BankingPage: React.FC<BankingPageProps> = ({ onNavigate }) => {
       setSelectedAccountIds(unimported);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to discover accounts.';
-      alert(msg);
-      setActiveConnectionForDiscovery(null);
+      setDiscoverError(msg);
     } finally {
       setIsDiscovering(false);
     }
   };
 
   const handleImportSelected = async () => {
-    if (!activeConnectionForDiscovery || selectedAccountIds.length === 0) return;
+    if (!activeConnectionForDiscovery || selectedAccountIds.length === 0 || isImporting) return;
 
     setIsImporting(true);
+    setDiscoverError(null);
+    setError(null);
+    setSyncMessage(null);
     try {
-      await financeApi.importBankingAccounts(
+      const imported = await financeApi.importBankingAccounts(
         activeConnectionForDiscovery.id,
         selectedAccountIds
       );
+      const instName = activeConnectionForDiscovery.institution_name;
       setActiveConnectionForDiscovery(null);
       await loadBankingData();
+      setSyncMessage(
+        imported.length > 0
+          ? `Imported ${imported.length} account(s) from ${instName}. View them on Financial Accounts or click "Sync Now" to import transactions.`
+          : `Selected account(s) from ${instName} are already imported.`
+      );
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to import accounts.';
-      alert(msg);
+      setDiscoverError(msg);
     } finally {
       setIsImporting(false);
     }
   };
 
   const handleSyncConnection = async (connId: string) => {
+    if (isSyncing) return;
     setIsSyncing(connId);
     setSyncMessage(null);
+    setError(null);
     try {
       const res = await financeApi.syncBankingConnection(connId);
       setSyncMessage(res.message);
       await loadBankingData();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Sync failed.';
-      alert(msg);
+      setError(msg);
     } finally {
       setIsSyncing(null);
     }
   };
 
+  const handleOpenSyncHistory = async (conn: BankingConnection) => {
+    setHistoryConnection(conn);
+    setIsLoadingRuns(true);
+    setHistoryError(null);
+    setSyncRuns([]);
+    try {
+      const runs = await financeApi.listBankingSyncRuns(conn.id);
+      setSyncRuns(runs);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to load sync history.';
+      setHistoryError(msg);
+    } finally {
+      setIsLoadingRuns(false);
+    }
+  };
+
   const handleDisconnect = async (connId: string) => {
+    if (disconnectingId) return;
     if (confirm('Disconnect this simulated banking connection? Existing imported records will be preserved.')) {
+      setDisconnectingId(connId);
+      setError(null);
+      setSyncMessage(null);
       try {
-        await financeApi.disconnectBankingConnection(connId);
+        const res = await financeApi.disconnectBankingConnection(connId);
         await loadBankingData();
+        setSyncMessage(
+          `Disconnected ${res.institution_name}. Existing imported accounts and transaction history have been preserved.`
+        );
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Failed to disconnect.';
-        alert(msg);
+        setError(msg);
+      } finally {
+        setDisconnectingId(null);
       }
     }
   };
@@ -279,22 +334,33 @@ export const BankingPage: React.FC<BankingPageProps> = ({ onNavigate }) => {
                       <button
                         onClick={() => handleSyncConnection(conn.id)}
                         disabled={isSyncing === conn.id}
-                        className="px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg font-medium transition-colors flex items-center space-x-1"
+                        className="px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg font-medium transition-colors flex items-center space-x-1 disabled:opacity-50"
                       >
                         <RefreshCw
                           className={`w-3.5 h-3.5 ${isSyncing === conn.id ? 'animate-spin' : ''}`}
                         />
-                        <span>Sync Now</span>
-                      </button>
-
-                      <button
-                        onClick={() => handleDisconnect(conn.id)}
-                        className="px-3 py-1.5 text-gray-500 hover:text-red-700 hover:bg-red-50 rounded-lg font-medium transition-colors ml-auto flex items-center space-x-1"
-                      >
-                        <Unplug className="w-3.5 h-3.5" />
-                        <span>Disconnect</span>
+                        <span>{isSyncing === conn.id ? 'Syncing...' : 'Sync Now'}</span>
                       </button>
                     </>
+                  )}
+
+                  <button
+                    onClick={() => handleOpenSyncHistory(conn)}
+                    className="px-3 py-1.5 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg font-medium transition-colors flex items-center space-x-1"
+                  >
+                    <History className="w-3.5 h-3.5" />
+                    <span>Sync History</span>
+                  </button>
+
+                  {conn.status === 'connected' && (
+                    <button
+                      onClick={() => handleDisconnect(conn.id)}
+                      disabled={disconnectingId === conn.id}
+                      className="px-3 py-1.5 text-gray-500 hover:text-red-700 hover:bg-red-50 rounded-lg font-medium transition-colors ml-auto flex items-center space-x-1 disabled:opacity-50"
+                    >
+                      <Unplug className="w-3.5 h-3.5" />
+                      <span>{disconnectingId === conn.id ? 'Disconnecting...' : 'Disconnect'}</span>
+                    </button>
                   )}
                 </div>
               </div>
@@ -390,6 +456,13 @@ export const BankingPage: React.FC<BankingPageProps> = ({ onNavigate }) => {
               Initialize a simulated sandbox connection to discover demo accounts and realistic transactions.
             </p>
 
+            {connectError && (
+              <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 flex items-start space-x-2">
+                <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                <span>{connectError}</span>
+              </div>
+            )}
+
             <form onSubmit={handleConnectProvider} className="mt-5 space-y-4">
               <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-700 space-y-2">
                 <div className="font-semibold text-gray-900">Simulation Disclaimers:</div>
@@ -453,6 +526,13 @@ export const BankingPage: React.FC<BankingPageProps> = ({ onNavigate }) => {
             <p className="text-xs text-gray-500 mt-1">
               Select which demo accounts you want to import into your financial ledger.
             </p>
+
+            {discoverError && (
+              <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 flex items-start space-x-2">
+                <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                <span>{discoverError}</span>
+              </div>
+            )}
 
             <div className="mt-4 max-h-60 overflow-y-auto space-y-2.5">
               {isDiscovering ? (
@@ -537,6 +617,95 @@ export const BankingPage: React.FC<BankingPageProps> = ({ onNavigate }) => {
                   <span>Import Selected</span>
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sync History Modal */}
+      {historyConnection && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl relative animate-in fade-in zoom-in duration-150">
+            <button
+              onClick={() => setHistoryConnection(null)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+              aria-label="Close sync history"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <h3 className="text-base font-bold text-gray-900">
+              Synchronization History — {historyConnection.institution_name}
+            </h3>
+            <p className="text-xs text-gray-500 mt-1">
+              Audit log of recorded provider synchronization runs.
+            </p>
+
+            {historyError && (
+              <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 flex items-start space-x-2">
+                <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                <span>{historyError}</span>
+              </div>
+            )}
+
+            <div className="mt-4 max-h-72 overflow-y-auto space-y-2.5">
+              {isLoadingRuns ? (
+                <div className="py-8 text-center text-gray-400 text-xs">
+                  <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-blue-600" />
+                  <span>Loading sync runs...</span>
+                </div>
+              ) : syncRuns.length === 0 ? (
+                <div className="py-6 text-center text-gray-500 text-xs">
+                  No synchronization runs recorded yet. Click &ldquo;Sync Now&rdquo; to trigger a sync.
+                </div>
+              ) : (
+                syncRuns.map((run) => (
+                  <div
+                    key={run.id}
+                    className="p-3 rounded-lg border border-gray-200 bg-gray-50/70 flex items-center justify-between text-xs"
+                  >
+                    <div>
+                      <div className="font-semibold text-gray-900 flex items-center space-x-2">
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                            run.status === 'success'
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : 'bg-red-50 text-red-700 border border-red-200'
+                          }`}
+                        >
+                          {run.status}
+                        </span>
+                        <span>{formatDate(run.started_at)}</span>
+                      </div>
+                      {run.error_message && (
+                        <div className="text-red-600 mt-1">{run.error_message}</div>
+                      )}
+                    </div>
+                    <div className="text-right text-gray-600">
+                      <div>
+                        <span className="font-semibold text-gray-900">{run.accounts_synced}</span>{' '}
+                        account(s)
+                      </div>
+                      <div>
+                        <span className="font-semibold text-gray-900">
+                          {run.transactions_synced}
+                        </span>{' '}
+                        new tx(s)
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="mt-5 pt-3 border-t border-gray-100 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setHistoryConnection(null)}
+                className="px-4 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>

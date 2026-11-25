@@ -12,6 +12,7 @@ from app.schemas.finance.banking import (
     BankingConsentRequest,
     BankingProviderInfo,
     BankingSyncResponse,
+    BankingSyncRunResponse,
     DiscoveredAccountInfo,
 )
 from app.services.banking.banking_service import BankingService
@@ -115,6 +116,20 @@ def sync_connection(
 ):
     """Synchronizes transactions idempotently from the connected provider."""
     return banking_service.sync_connection(db, current_user, connection_id)
+
+
+@router.get(
+    "/connections/{connection_id}/sync-runs",
+    response_model=list[BankingSyncRunResponse],
+    summary="List synchronization history for a connection",
+)
+def list_sync_runs(
+    connection_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Returns audit history of synchronization runs for a banking connection."""
+    return banking_service.list_sync_runs(db, current_user, connection_id)
 
 
 @router.post(

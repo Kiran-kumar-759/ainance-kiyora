@@ -33,6 +33,7 @@ vi.mock('../services/financeApi', () => ({
     discoverBankingAccounts: vi.fn(),
     importBankingAccounts: vi.fn(),
     syncBankingConnection: vi.fn(),
+    listBankingSyncRuns: vi.fn(),
     disconnectBankingConnection: vi.fn(),
   },
 }));
@@ -407,5 +408,166 @@ describe('Frontend Financial Engine & Banking Pages', () => {
         true
       );
     });
+  });
+
+  it('handles account creation errors cleanly and shows confirmed success banner', async () => {
+    const onNavigate = vi.fn();
+    vi.mocked(financeApi.listAccounts).mockResolvedValue([]);
+    vi.mocked(financeApi.createAccount).mockRejectedValueOnce(
+      new Error('An active savings account named "SBI Savings" already exists.')
+    );
+
+    render(<AccountsPage onNavigate={onNavigate} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('No accounts found')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Add Account'));
+    fireEvent.change(screen.getByPlaceholderText('e.g. HDFC Salary, ICICI Savings, Cash Wallet'), {
+      target: { value: 'SBI Savings' },
+    });
+    fireEvent.click(screen.getByText('Save Account'));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('An active savings account named "SBI Savings" already exists.')
+      ).toBeInTheDocument();
+    });
+    // Modal remains open and Save button is re-enabled (not stuck loading)
+    expect(screen.getByText('Save Account')).not.toBeDisabled();
+
+    // Retry succeeds
+    vi.mocked(financeApi.createAccount).mockResolvedValueOnce({
+      id: 'acc-201',
+      user_id: 'u-1',
+      name: 'SBI Savings',
+      account_type: 'savings',
+      institution_name: 'SBI',
+      currency: 'INR',
+      opening_balance: '25000.00',
+      current_balance: '25000.00',
+      status: 'active',
+      source: 'manual',
+      created_at: '2026-11-25T00:00:00Z',
+      updated_at: '2026-11-25T00:00:00Z',
+    });
+
+    fireEvent.click(screen.getByText('Save Account'));
+    await waitFor(() => {
+      expect(
+        screen.getByText('Account "SBI Savings" created with balance ₹25,000.00.')
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('supports demo banking discovery, selective import, sync, sync history, and inline errors without alert', async () => {
+    const onNavigate = vi.fn();
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+
+    vi.mocked(financeApi.listBankingProviders).mockResolvedValue([
+      {
+        provider_id: 'demo_national_bank',
+        name: 'Demo National Bank of India',
+        description: 'PSU simulation',
+        is_simulated: true,
+        logo_key: 'building-2',
+        supported_account_types: ['savings', 'current'],
+      },
+    ]);
+    vi.mocked(financeApi.listBankingConnections).mockResolvedValue([
+      {
+        id: 'conn-1',
+        provider_id: 'demo_national_bank',
+        institution_name: 'Demo National Bank of India',
+        status: 'connected',
+        consent_granted_at: '2026-11-25T00:00:00Z',
+        is_simulated: true,
+        created_at: '2026-11-25T00:00:00Z',
+        connected_accounts_count: 1,
+      },
+    ]);
+    vi.mocked(financeApi.discoverBankingAccounts).mockResolvedValue([
+      {
+        external_account_id: 'dnb_sav_001',
+        name: 'DNB Salary Savings Account',
+        account_type: 'savings',
+        institution_name: 'Demo National Bank of India',
+        masked_account_number: '••• 4892',
+        balance: '125450.00',
+        currency: 'INR',
+        already_imported: false,
+      },
+    ]);
+    vi.mocked(financeApi.importBankingAccounts).mockResolvedValue([
+      {
+        id: 'acc-demo-1',
+        user_id: 'u-1',
+        name: 'DNB Salary Savings Account',
+        account_type: 'savings',
+        institution_name: 'Demo National Bank of India',
+        account_identifier: '••• 4892',
+        currency: 'INR',
+        opening_balance: '125450.00',
+        current_balance: '125450.00',
+        status: 'active',
+        source: 'demo_bank',
+        created_at: '2026-11-25T00:00:00Z',
+        updated_at: '2026-11-25T00:00:00Z',
+      },
+    ]);
+    vi.mocked(financeApi.syncBankingConnection).mockResolvedValue({
+      connection_id: 'conn-1',
+      status: 'success',
+      accounts_synced: 1,
+      transactions_synced: 4,
+      synced_at: '2026-11-25T01:00:00Z',
+      message: 'Synchronized 1 account(s) and 4 new transaction(s).',
+    });
+    vi.mocked(financeApi.listBankingSyncRuns).mockResolvedValue([
+      {
+        id: 'run-1',
+        connection_id: 'conn-1',
+        status: 'success',
+        accounts_synced: 1,
+        transactions_synced: 4,
+        started_at: '2026-11-25T01:00:00Z',
+        completed_at: '2026-11-25T01:00:01Z',
+      },
+    ]);
+
+    render(<BankingPage onNavigate={onNavigate} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Discover Accounts')).toBeInTheDocument();
+    });
+
+    // Discover & Import
+    fireEvent.click(screen.getByText('Discover Accounts'));
+    await waitFor(() => {
+      expect(screen.getByText('DNB Salary Savings Account')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('Import Selected'));
+    await waitFor(() => {
+      expect(financeApi.importBankingAccounts).toHaveBeenCalledWith('conn-1', ['dnb_sav_001']);
+    });
+
+    // Sync Now
+    fireEvent.click(screen.getByText('Sync Now'));
+    await waitFor(() => {
+      expect(
+        screen.getByText('Synchronized 1 account(s) and 4 new transaction(s).')
+      ).toBeInTheDocument();
+    });
+
+    // Sync History modal
+    fireEvent.click(screen.getByText('Sync History'));
+    await waitFor(() => {
+      expect(screen.getByText(/Synchronization History/i)).toBeInTheDocument();
+      expect(screen.getByText(/new tx\(s\)/i)).toBeInTheDocument();
+    });
+
+    expect(alertSpy).not.toHaveBeenCalled();
+    alertSpy.mockRestore();
   });
 });

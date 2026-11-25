@@ -18,6 +18,18 @@ import { TransactionsPage } from '../pages/finance/TransactionsPage';
 import { TransfersPage } from '../pages/finance/TransfersPage';
 import { BankingPage } from '../pages/banking/BankingPage';
 
+const PROTECTED_VIEWS = new Set([
+  'dashboard',
+  'accounts',
+  'transactions',
+  'transfers',
+  'banking',
+  'profile',
+  'preferences',
+  'sessions',
+  'onboarding',
+]);
+
 const AppContent: React.FC = () => {
   const {
     health,
@@ -40,7 +52,14 @@ const AppContent: React.FC = () => {
     if (isAuthenticated && currentView === 'foundation') {
       setCurrentView('dashboard');
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, currentView]);
+
+  // If session expires or user logs out while on a protected view, steer gracefully to login
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated && PROTECTED_VIEWS.has(currentView)) {
+      setCurrentView('login');
+    }
+  }, [authLoading, isAuthenticated, currentView]);
 
   // Check URL parameters for email verification or password reset tokens
   useEffect(() => {

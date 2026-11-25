@@ -149,3 +149,14 @@ export interface BankingSyncResponse {
   synced_at: string;
   message: string;
 }
+
+export interface BankingSyncRun {
+  id: string;
+  connection_id: string;
+  status: string;
+  accounts_synced: number;
+  transactions_synced: number;
+  error_message?: string | null;
+  started_at: string;
+  completed_at?: string | null;
+}

@@ -48,6 +48,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fetchSession();
   }, [fetchSession]);
 
+  useEffect(() => {
+    const handleSessionExpired = (event: Event) => {
+      const detail = (event as CustomEvent<string>).detail;
+      setUser(null);
+      setPreferences(null);
+      setError(detail || 'Your session has expired. Please sign in again.');
+    };
+    window.addEventListener('pfm:session-expired', handleSessionExpired);
+    return () => {
+      window.removeEventListener('pfm:session-expired', handleSessionExpired);
+    };
+  }, []);
+
   const login = async (email: string, password: string): Promise<void> => {
     setError(null);
     const res = await authApi.login(email, password);

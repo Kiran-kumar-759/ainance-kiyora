@@ -82,22 +82,31 @@ class CategoryService:
     def __init__(self):
         self.category_repo = CategoryRepository()
 
-    def seed_default_categories(self, db: Session) -> None:
+    def seed_default_categories(self, db: Session, commit: bool = True) -> None:
         """Seeds standard Indian transaction categories if not already present."""
-        for item in SYSTEM_CATEGORIES:
-            existing = self.category_repo.get_system_category_by_name(
-                db, item["name"], item["type"]
-            )
-            if not existing:
-                cat = FinancialCategory(
-                    user_id=None,
-                    name=item["name"],
-                    category_type=item["type"],
-                    icon=item["icon"],
-                    color=item["color"],
-                    is_system=True,
+        created_any = False
+        try:
+            for item in SYSTEM_CATEGORIES:
+                existing = self.category_repo.get_system_category_by_name(
+                    db, item["name"], item["type"]
                 )
-                self.category_repo.create(db, cat)
+                if not existing:
+                    cat = FinancialCategory(
+                        user_id=None,
+                        name=item["name"],
+                        category_type=item["type"],
+                        icon=item["icon"],
+                        color=item["color"],
+                        is_system=True,
+                    )
+                    self.category_repo.create(db, cat)
+                    created_any = True
+            if created_any and commit:
+                db.commit()
+        except Exception:
+            if commit:
+                db.rollback()
+            raise
 
     def list_categories(
         self, db: Session, user: User, category_type: str | None = None
@@ -117,16 +126,22 @@ class CategoryService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Category '{req.name}' already exists for type '{req.category_type}'.",
             )
-        cat = FinancialCategory(
-            user_id=user.id,
-            name=req.name.strip(),
-            category_type=req.category_type,
-            icon=req.icon,
-            color=req.color,
-            is_system=False,
-        )
-        self.category_repo.create(db, cat)
-        return CategoryResponse.model_validate(cat)
+        try:
+            cat = FinancialCategory(
+                user_id=user.id,
+                name=req.name.strip(),
+                category_type=req.category_type,
+                icon=req.icon,
+                color=req.color,
+                is_system=False,
+            )
+            self.category_repo.create(db, cat)
+            db.commit()
+            db.refresh(cat)
+            return CategoryResponse.model_validate(cat)
+        except Exception:
+            db.rollback()
+            raise
 
     def update_custom_category(
         self,
@@ -146,14 +161,20 @@ class CategoryService:
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Default system categories cannot be modified.",
             )
-        if req.name:
-            cat.name = req.name.strip()
-        if req.icon is not None:
-            cat.icon = req.icon
-        if req.color is not None:
-            cat.color = req.color
-        self.category_repo.update(db, cat)
-        return CategoryResponse.model_validate(cat)
+        try:
+            if req.name:
+                cat.name = req.name.strip()
+            if req.icon is not None:
+                cat.icon = req.icon
+            if req.color is not None:
+                cat.color = req.color
+            self.category_repo.update(db, cat)
+            db.commit()
+            db.refresh(cat)
+            return CategoryResponse.model_validate(cat)
+        except Exception:
+            db.rollback()
+            raise
 
     def delete_custom_category(self, db: Session, user: User, category_id: uuid.UUID) -> None:
         cat = self.category_repo.get_by_id(db, category_id, user.id)
@@ -172,4 +193,9 @@ class CategoryService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Cannot delete category that is referenced by existing transactions.",
             )
-        self.category_repo.delete(db, cat)
+        try:
+            self.category_repo.delete(db, cat)
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise

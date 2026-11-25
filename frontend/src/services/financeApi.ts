@@ -1,10 +1,16 @@
 import { config } from '../lib/config';
-import { fetchCsrfToken, getCsrfFromCookie, isValidCsrfToken } from './authApi';
+import {
+  extractApiErrorMessage,
+  fetchCsrfToken,
+  getCsrfFromCookie,
+  isValidCsrfToken,
+} from './authApi';
 import {
   AccountSummary,
   BankingConnection,
   BankingProviderInfo,
   BankingSyncResponse,
+  BankingSyncRun,
   DiscoveredAccount,
   FinancialAccount,
   FinancialCategory,
@@ -86,10 +92,10 @@ async function financeRequest<T>(
   const data = isJson ? await response.json() : await response.text();
 
   if (!response.ok) {
-    const errorMsg =
-      (data && typeof data === 'object' && 'detail' in data && (data as { detail: string }).detail) ||
-      (data && typeof data === 'object' && 'message' in data && (data as { message: string }).message) ||
-      `Request failed with status ${response.status}`;
+    const errorMsg = extractApiErrorMessage(data, response.status);
+    if (response.status === 401 && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('pfm:session-expired', { detail: errorMsg }));
+    }
     throw new FinanceApiError(errorMsg, response.status, data);
   }
 
@@ -353,6 +359,12 @@ export const financeApi = {
       {
         method: 'POST',
       }
+    );
+  },
+
+  async listBankingSyncRuns(connectionId: string): Promise<BankingSyncRun[]> {
+    return financeRequest<BankingSyncRun[]>(
+      `/api/v1/banking/connections/${connectionId}/sync-runs`
     );
   },
 

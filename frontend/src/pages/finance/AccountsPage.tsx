@@ -6,6 +6,7 @@ import {
   Archive,
   RefreshCw,
   AlertCircle,
+  CheckCircle2,
   Landmark,
   Edit2,
   RotateCcw,
@@ -24,6 +25,7 @@ export const AccountsPage: React.FC<AccountsPageProps> = ({ onNavigate }) => {
   const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [filter, setFilter] = useState<'active' | 'archived' | 'all'>('active');
 
   // Modals state
@@ -77,29 +79,39 @@ export const AccountsPage: React.FC<AccountsPageProps> = ({ onNavigate }) => {
 
   const handleCreateAccount = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (formSubmitting) return;
     if (!formData.name.trim()) {
       setFormError('Account name is required.');
       return;
     }
-    const ob = parseFloat(formData.opening_balance);
-    if (isNaN(ob) || ob < 0) {
-      setFormError('Opening balance must be a non-negative number.');
+    const obStr = formData.opening_balance.trim();
+    const ob = Number(obStr);
+    if (obStr === '' || isNaN(ob) || ob < 0) {
+      setFormError('Opening balance must be a valid non-negative number.');
+      return;
+    }
+    if (!/^\d+(\.\d{1,2})?$/.test(obStr)) {
+      setFormError('Opening balance supports at most 2 decimal places.');
       return;
     }
 
     setFormSubmitting(true);
     setFormError(null);
+    setSuccessMessage(null);
     try {
-      await financeApi.createAccount({
+      const created = await financeApi.createAccount({
         name: formData.name.trim(),
         account_type: formData.account_type,
         institution_name: formData.institution_name.trim() || null,
         account_identifier: formData.account_identifier.trim() || null,
-        opening_balance: formData.opening_balance,
+        opening_balance: obStr,
         currency: 'INR',
       });
       setIsAddModalOpen(false);
       await fetchAccounts();
+      setSuccessMessage(
+        `Account "${created.name}" created with balance ${formatINR(created.current_balance)}.`
+      );
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to create financial account.';
       setFormError(msg);
@@ -110,7 +122,7 @@ export const AccountsPage: React.FC<AccountsPageProps> = ({ onNavigate }) => {
 
   const handleUpdateAccount = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingAccount) return;
+    if (!editingAccount || formSubmitting) return;
     if (!editingAccount.name.trim()) {
       setFormError('Account name is required.');
       return;
@@ -118,8 +130,9 @@ export const AccountsPage: React.FC<AccountsPageProps> = ({ onNavigate }) => {
 
     setFormSubmitting(true);
     setFormError(null);
+    setSuccessMessage(null);
     try {
-      await financeApi.updateAccount(editingAccount.id, {
+      const updated = await financeApi.updateAccount(editingAccount.id, {
         name: editingAccount.name.trim(),
         account_type: editingAccount.account_type,
         institution_name: editingAccount.institution_name?.trim() || null,
@@ -127,6 +140,7 @@ export const AccountsPage: React.FC<AccountsPageProps> = ({ onNavigate }) => {
       });
       setEditingAccount(null);
       await fetchAccounts();
+      setSuccessMessage(`Account "${updated.name}" updated.`);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to update account.';
       setFormError(msg);
@@ -137,19 +151,24 @@ export const AccountsPage: React.FC<AccountsPageProps> = ({ onNavigate }) => {
 
   const handleCorrectOpeningBalance = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!correctingAccount) return;
-    const ob = parseFloat(correctedBalance);
-    if (isNaN(ob) || ob < 0) {
+    if (!correctingAccount || formSubmitting) return;
+    const obStr = correctedBalance.trim();
+    const ob = Number(obStr);
+    if (obStr === '' || isNaN(ob) || ob < 0) {
       setFormError('Corrected balance must be a valid non-negative number.');
       return;
     }
 
     setFormSubmitting(true);
     setFormError(null);
+    setSuccessMessage(null);
     try {
-      await financeApi.updateOpeningBalance(correctingAccount.id, correctedBalance);
+      const updated = await financeApi.updateOpeningBalance(correctingAccount.id, obStr);
       setCorrectingAccount(null);
       await fetchAccounts();
+      setSuccessMessage(
+        `Opening balance recalculated for "${updated.name}" (${formatINR(updated.current_balance)}).`
+      );
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to correct opening balance.';
       setFormError(msg);
@@ -159,18 +178,23 @@ export const AccountsPage: React.FC<AccountsPageProps> = ({ onNavigate }) => {
   };
 
   const handleToggleArchive = async (acc: FinancialAccount) => {
+    setError(null);
+    setSuccessMessage(null);
     try {
       if (acc.status === 'active') {
         if (confirm(`Archive account "${acc.name}"? Transactions will be preserved.`)) {
           await financeApi.archiveAccount(acc.id);
+          await fetchAccounts();
+          setSuccessMessage(`Account "${acc.name}" archived. Historical ledger records remain intact.`);
         }
       } else {
         await financeApi.restoreAccount(acc.id);
+        await fetchAccounts();
+        setSuccessMessage(`Account "${acc.name}" restored to active status.`);
       }
-      await fetchAccounts();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Action failed.';
-      alert(msg);
+      setError(msg);
     }
   };
 
@@ -237,6 +261,21 @@ export const AccountsPage: React.FC<AccountsPageProps> = ({ onNavigate }) => {
           <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
         </button>
       </div>
+
+      {/* Success state */}
+      {successMessage && (
+        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 flex items-center space-x-3 text-sm">
+          <CheckCircle2 className="w-5 h-5 flex-shrink-0 text-emerald-600" />
+          <div className="flex-1">{successMessage}</div>
+          <button
+            onClick={() => setSuccessMessage(null)}
+            className="text-emerald-700 hover:text-emerald-900"
+            aria-label="Dismiss success message"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Error state */}
       {error && (

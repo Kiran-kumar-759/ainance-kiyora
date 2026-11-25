@@ -1,7 +1,7 @@
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.finance import FinancialAccount
@@ -21,6 +21,17 @@ class AccountRepository:
         stmt = select(FinancialAccount).where(
             FinancialAccount.id == account_id,
             FinancialAccount.user_id == user_id,
+        )
+        return db.execute(stmt).scalar_one_or_none()
+
+    def get_active_by_name_and_type(
+        self, db: Session, user_id: uuid.UUID, name: str, account_type: str
+    ) -> FinancialAccount | None:
+        stmt = select(FinancialAccount).where(
+            FinancialAccount.user_id == user_id,
+            FinancialAccount.status == "active",
+            func.lower(FinancialAccount.name) == name.strip().lower(),
+            FinancialAccount.account_type == account_type,
         )
         return db.execute(stmt).scalar_one_or_none()
 

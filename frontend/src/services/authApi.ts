@@ -57,6 +57,37 @@ export async function fetchCsrfToken(forceRefresh = false): Promise<string> {
   return '';
 }
 
+export function extractApiErrorMessage(data: unknown, status: number): string {
+  if (data && typeof data === 'object') {
+    if ('detail' in data) {
+      const detail = (data as { detail: unknown }).detail;
+      if (typeof detail === 'string' && detail.trim()) {
+        return detail;
+      }
+      if (Array.isArray(detail) && detail.length > 0) {
+        return detail
+          .map((item) => {
+            if (item && typeof item === 'object' && 'msg' in item) {
+              const loc = Array.isArray((item as { loc?: unknown[] }).loc)
+                ? (item as { loc: unknown[] }).loc
+                    .filter((part) => part !== 'body')
+                    .join('.')
+                : '';
+              const msg = String((item as { msg: unknown }).msg);
+              return loc ? `${loc}: ${msg}` : msg;
+            }
+            return String(item);
+          })
+          .join('; ');
+      }
+    }
+    if ('message' in data && typeof (data as { message: unknown }).message === 'string') {
+      return (data as { message: string }).message;
+    }
+  }
+  return `Request failed with status ${status}`;
+}
+
 async function authRequest<T>(
   endpoint: string,
   options: RequestInit = {}
@@ -119,10 +150,16 @@ async function authRequest<T>(
   const data = isJson ? await response.json() : await response.text();
 
   if (!response.ok) {
-    const errorMsg =
-      (data && typeof data === 'object' && 'detail' in data && (data as { detail: string }).detail) ||
-      (data && typeof data === 'object' && 'message' in data && (data as { message: string }).message) ||
-      `Request failed with status ${response.status}`;
+    const errorMsg = extractApiErrorMessage(data, response.status);
+    if (
+      response.status === 401 &&
+      !endpoint.includes('/auth/login') &&
+      !endpoint.includes('/auth/register') &&
+      !endpoint.includes('/auth/me') &&
+      typeof window !== 'undefined'
+    ) {
+      window.dispatchEvent(new CustomEvent('pfm:session-expired', { detail: errorMsg }));
+    }
     throw new AuthApiError(errorMsg, response.status, data);
   }
 

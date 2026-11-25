@@ -68,22 +68,23 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({ onNavigate }
   const [formError, setFormError] = useState<string | null>(null);
 
   // Load accounts and categories on mount
-  useEffect(() => {
-    const loadMetadata = async () => {
-      try {
-        const [accs, cats] = await Promise.all([
-          financeApi.listAccounts(false),
-          financeApi.listCategories(),
-        ]);
-        setAccounts(accs);
-        setCategories(cats);
-        if (accs.length > 0 && !formData.account_id) {
-          setFormData((prev) => ({ ...prev, account_id: accs[0].id }));
-        }
-      } catch {
-        // Fallback gracefully
+  const loadMetadata = async () => {
+    try {
+      const [accs, cats] = await Promise.all([
+        financeApi.listAccounts(false),
+        financeApi.listCategories(),
+      ]);
+      setAccounts(accs);
+      setCategories(cats);
+      if (accs.length > 0 && !formData.account_id) {
+        setFormData((prev) => ({ ...prev, account_id: accs[0].id }));
       }
-    };
+    } catch {
+      // Fallback gracefully
+    }
+  };
+
+  useEffect(() => {
     loadMetadata();
   }, []);
 
@@ -141,6 +142,7 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({ onNavigate }
 
   const handleCreateTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (formSubmitting) return;
     if (!formData.account_id) {
       setFormError('Please select an account.');
       return;
@@ -148,6 +150,18 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({ onNavigate }
     const amt = parseFloat(formData.amount);
     if (isNaN(amt) || amt <= 0) {
       setFormError('Amount must be greater than zero.');
+      return;
+    }
+    const selectedAcc = accounts.find((a) => a.id === formData.account_id);
+    if (
+      selectedAcc &&
+      selectedAcc.account_type !== 'credit_card' &&
+      formData.transaction_type === 'expense' &&
+      amt > Number(selectedAcc.current_balance)
+    ) {
+      setFormError(
+        `Insufficient balance in ${selectedAcc.name}. Available balance is ${formatINR(selectedAcc.current_balance)}.`
+      );
       return;
     }
     if (!formData.description.trim()) {
@@ -169,7 +183,7 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({ onNavigate }
         notes: formData.notes.trim() || null,
       });
       setIsAddModalOpen(false);
-      await fetchTransactions();
+      await Promise.all([fetchTransactions(), loadMetadata()]);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to record transaction.';
       setFormError(msg);
@@ -180,7 +194,7 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({ onNavigate }
 
   const handleUpdateTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingTx) return;
+    if (!editingTx || formSubmitting) return;
     const amt = parseFloat(String(editingTx.amount));
     if (isNaN(amt) || amt <= 0) {
       setFormError('Amount must be greater than zero.');
@@ -199,7 +213,7 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({ onNavigate }
         notes: editingTx.notes?.trim() || null,
       });
       setEditingTx(null);
-      await fetchTransactions();
+      await Promise.all([fetchTransactions(), loadMetadata()]);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to update transaction.';
       setFormError(msg);
@@ -209,15 +223,16 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({ onNavigate }
   };
 
   const handleDeleteTransaction = async () => {
-    if (!deletingTx) return;
+    if (!deletingTx || formSubmitting) return;
     setFormSubmitting(true);
+    setFormError(null);
     try {
       await financeApi.deleteTransaction(deletingTx.id);
       setDeletingTx(null);
-      await fetchTransactions();
+      await Promise.all([fetchTransactions(), loadMetadata()]);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to delete transaction.';
-      alert(msg);
+      setFormError(msg);
     } finally {
       setFormSubmitting(false);
     }
@@ -916,6 +931,12 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({ onNavigate }
               Are you sure you want to delete &ldquo;{deletingTx.description}&rdquo; ({formatINR(deletingTx.amount)})?
               The ledger entry will be reversed and account balances updated.
             </p>
+
+            {formError && (
+              <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+                {formError}
+              </div>
+            )}
 
             <div className="mt-5 flex justify-end space-x-2">
               <button

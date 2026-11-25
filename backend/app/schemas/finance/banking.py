@@ -57,3 +57,16 @@ class BankingSyncResponse(BaseModel):
     transactions_synced: int
     synced_at: dt.datetime
     message: str
+
+
+class BankingSyncRunResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    connection_id: uuid.UUID
+    status: str
+    accounts_synced: int
+    transactions_synced: int
+    error_message: str | None = None
+    started_at: dt.datetime
+    completed_at: dt.datetime | None = None

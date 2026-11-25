@@ -38,6 +38,7 @@ export const TransfersPage: React.FC<TransfersPageProps> = ({ onNavigate }) => {
   const [reversingTransfer, setReversingTransfer] = useState<FinancialTransfer | null>(null);
   const [reversalReason, setReversalReason] = useState<string>('Accidental transfer');
   const [isReversing, setIsReversing] = useState<boolean>(false);
+  const [reversalError, setReversalError] = useState<string | null>(null);
 
   const loadData = async () => {
     setIsLoading(true);
@@ -67,6 +68,7 @@ export const TransfersPage: React.FC<TransfersPageProps> = ({ onNavigate }) => {
 
   const handleExecuteTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setFormError(null);
     setSuccessMessage(null);
 
@@ -81,6 +83,13 @@ export const TransfersPage: React.FC<TransfersPageProps> = ({ onNavigate }) => {
     const numAmt = parseFloat(amount);
     if (isNaN(numAmt) || numAmt <= 0) {
       setFormError('Transfer amount must be greater than zero.');
+      return;
+    }
+    const srcAcc = accounts.find((a) => a.id === sourceAccountId);
+    if (srcAcc && srcAcc.account_type !== 'credit_card' && numAmt > Number(srcAcc.current_balance)) {
+      setFormError(
+        `Insufficient balance in ${srcAcc.name}. Available balance is ${formatINR(srcAcc.current_balance)}.`
+      );
       return;
     }
 
@@ -108,16 +117,18 @@ export const TransfersPage: React.FC<TransfersPageProps> = ({ onNavigate }) => {
 
   const handleConfirmReversal = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!reversingTransfer) return;
+    if (!reversingTransfer || isReversing) return;
 
     setIsReversing(true);
+    setReversalError(null);
     try {
       await financeApi.reverseTransfer(reversingTransfer.id, reversalReason.trim());
       setReversingTransfer(null);
       await loadData();
+      setSuccessMessage('Transfer reversed and account balances restored.');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to reverse transfer.';
-      alert(msg);
+      setReversalError(msg);
     } finally {
       setIsReversing(false);
     }
@@ -398,6 +409,12 @@ export const TransfersPage: React.FC<TransfersPageProps> = ({ onNavigate }) => {
               {reversingTransfer.source_account_name} and{' '}
               {reversingTransfer.destination_account_name} will restore both original account balances.
             </p>
+
+            {reversalError && (
+              <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+                {reversalError}
+              </div>
+            )}
 
             <form onSubmit={handleConfirmReversal} className="mt-4 space-y-3">
               <div>
