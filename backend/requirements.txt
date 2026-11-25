@@ -21,3 +21,5 @@ onnxruntime>=1.20.0
 cryptography>=44.0.0
 google-auth-oauthlib>=1.2.0
 google-api-python-client>=2.150.0
+scikit-learn>=1.6.0
+groq>=0.15.0

@@ -612,3 +612,17 @@ Added in Alembic revision **`01139757d108_create_documents_ocr_email_ingestion_.
   - `email_sync_history`: Per-sync run metrics (`messages_scanned`, `relevant_messages`, `attachments_processed`, `duplicate_candidates`, `candidates_needing_review`, `failed_jobs`).
   - `email_message_records` (`uq_email_msg_user_provider_msg`): Sanitized plain-text email metadata & body.
   - `email_attachment_records` & `email_document_candidates`: Email-to-document links and human-reviewable candidate summaries with `duplicate_status` (`unique`, `uncertain_duplicate`, `exact_duplicate`).
+
+
+## Phase 8 — AI Expense Intelligence Tables (Migration `8100a1ca522b`)
+
+- `merchant_identities`: Per-user canonical normalized merchants (`(user_id, canonical_key)` unique), `normalized_name`, `default_category_id`, `is_user_confirmed`, `transaction_count`, `total_spent`.
+- `merchant_aliases`: Raw bank/UPI description patterns mapped to `merchant_identities` (`(user_id, raw_pattern)` unique).
+- `merchant_category_mappings`: Authoritative user-confirmed merchant-to-category rules (`(user_id, merchant_id)` unique).
+- `transaction_categorizations`: One-to-one (`transaction_id` unique) explainable categorization suggestions with `classification_method`, `confidence`, `explanation`, `evidence`, `model_version`, `provider_name`, `review_status`, and `input_signature`.
+- `categorization_feedback`: Immutable audit trail of user `confirm`/`override`/`dismiss` actions linking `transaction_id`, previous/new categories, and previous/new merchant names.
+- `ai_model_metadata`: Strict per-user (`user_id` unique) `tfidf_logreg_per_user` model state, evaluation metrics (`accuracy`, `precision_weighted`, `recall_weighted`, `f1_weighted`, `confusion_matrix`), `evaluation_notes`, and serialized scikit-learn pipeline.
+- `recurring_payment_candidates`: Detected fixed and variable recurring series (`(user_id, merchant_key, frequency)` unique) with min/max/estimated `Decimal` amounts, variability %, interval evidence, and optional `linked_subscription_id` (`subscriptions.id`).
+- `spending_anomalies`: Deduplicated (`(user_id, dedupe_key)` unique) statistical deviations with observed/baseline amounts, `deviation_pct`, `severity`, `detection_method`, plain-English explanation, and `review_status`.
+- `financial_insights`: Deduplicated (`(user_id, dedupe_key)` unique) evidence-backed spending insights with `supporting_data`, `calculation_method`, `provider_name`, `confidence`, and `status` (`new`, `read`, `dismissed`).
+- `ai_processing_jobs`: Durable PostgreSQL job queue with partial unique index `uq_ai_active_job_per_user` on `(user_id, job_type)` where `status IN ('queued', 'processing')`, claimed via `FOR UPDATE SKIP LOCKED`.

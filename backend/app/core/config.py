@@ -127,9 +127,16 @@ class Settings(BaseSettings):
     SMS_INGESTION_ENABLED: bool = False
     SMS_INGESTION_PROVIDER: str = "none"
 
-    # External Provider Conventions (Future Phases 8, 10 - not required in Phase 7)
+    # AI Expense Intelligence & Optional Groq Integration (Phase 8)
+    AI_WORKER_ENABLED: bool = True
+    AI_WORKER_INTERVAL_SECONDS: int = 20
+    GROQ_ENABLED: bool = False
     GROQ_API_KEY: str | None = None
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    GROQ_TIMEOUT_SECONDS: float = 12.0
+    GROQ_MAX_RETRIES: int = 2
+
+    # External Provider Conventions (Future Phases 10+)
     TAVILY_API_KEY: str | None = None
 
     @field_validator("CORS_ORIGINS", mode="before")

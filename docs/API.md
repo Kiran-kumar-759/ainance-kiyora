@@ -125,3 +125,22 @@ Mutating endpoints (`POST`, `PATCH`, `PUT`, `DELETE`) require `X-CSRF-Token` alo
 - `POST /api/v1/email/gmail/sync`, `GET /sync-history` — Incremental `historyId` / query financial sync producing private attachments and reviewable candidates.
 - `GET /api/v1/email/candidates`, `GET /candidates/{id}`, `POST /candidates/{id}/confirm`, `/reject` — Review, duplicate-warning inspection, confirmation, and rejection workflows.
 - `GET /api/v1/email/sms/status` — Explicit SMS ingestion availability boundary (`available: false` in web SaaS without native Android companion).
+
+
+## Phase 8 — AI Expense Intelligence (`/api/v1/intelligence`)
+
+All endpoints require an authenticated session (`get_current_user`); mutating `POST`/`PATCH` routes require `verify_csrf` (`X-CSRF-Token`) and enforce strict `user_id` isolation.
+
+- `GET /api/v1/intelligence/overview` — Returns aggregate coverage metrics, personal ML model status & evaluation scores, recent `AiProcessingJob` runs, top expense categories (`180d`), top open anomalies, and unread insights.
+- `POST /api/v1/intelligence/run` — Runs the full Phase 8 intelligence pipeline (`ML training -> layered categorization & merchant normalization -> recurring detection -> pattern aggregation -> statistical anomaly detection -> insights`). Supports `async_job: true` to enqueue a PostgreSQL `AiProcessingJob`.
+- `POST /api/v1/intelligence/categorize` — Executes layered transaction categorization (`user_override -> confirmed_mapping -> deterministic_rule -> ml_classifier -> optional groq llm_fallback -> fallback`).
+- `GET /api/v1/intelligence/categorizations` — Paginated, searchable transaction categorization suggestions with confidence, method, explanation, and review status (`needs_review`, `auto_categorized`, `confirmed`, `overridden`, `dismissed`).
+- `POST /api/v1/intelligence/categorizations/{transaction_id}/override` — Confirms, overrides, or dismisses a category suggestion; records `CategorizationFeedback`; updates `FinancialTransaction.category_id` only on explicit user `confirm`/`override` and optionally saves an authoritative `MerchantCategoryMapping`.
+- `GET /api/v1/intelligence/feedback` — Lists recent user categorization feedback events.
+- `POST /api/v1/intelligence/ml/train` & `GET /api/v1/intelligence/ml/status` — Trains/inspects the strict per-user `TF-IDF + LogisticRegression` classifier and reports honest `insufficient_data` when fewer than 12 eligible samples across 2+ classes exist.
+- `GET /api/v1/intelligence/merchants` & `PATCH /api/v1/intelligence/merchants/{merchant_id}` — Lists canonical normalized merchants with raw aliases (`MerchantAlias`) and lets users confirm/rename display names and bind authoritative default categories.
+- `GET /api/v1/intelligence/recurring-candidates` & `POST /api/v1/intelligence/recurring-candidates/{candidate_id}/decision` — Lists fixed & variable recurring candidates and confirms, rejects, or links/creates a real Phase 6 `Subscription`.
+- `GET /api/v1/intelligence/patterns` — Returns deterministic `Decimal` spending patterns (essential/discretionary, fixed/variable, recurring/non-recurring, weekend/weekday, merchant concentration, monthly/weekly/day-of-week trends), excluding transfers and reversed journals.
+- `GET /api/v1/intelligence/anomalies` & `POST /api/v1/intelligence/anomalies/{anomaly_id}/review` — Lists statistical baseline deviations (`robust_median_mad`, `monthly_baseline_comparison`, `recurring_charge_delta`) and supports `acknowledge` / `dismiss` / `reopen`.
+- `GET /api/v1/intelligence/insights` & `POST /api/v1/intelligence/insights/{insight_id}/review` — Lists evidence-backed insights (`new` / `read` / `dismissed`) and supports `mark_read` / `dismiss` / `reopen`.
+- `GET /api/v1/intelligence/jobs` — Lists recent `AiProcessingJob` execution records.

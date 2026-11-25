@@ -10,6 +10,7 @@ from app.api.routes import health
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.db.session import check_db_readiness, engine
+from app.services.ai.worker import ai_intelligence_worker
 from app.services.bills.scheduler import reminder_scheduler
 from app.services.documents.worker import document_ocr_worker
 
@@ -37,7 +38,9 @@ async def lifespan(app: FastAPI):
         )
     reminder_scheduler.start()
     document_ocr_worker.start()
+    ai_intelligence_worker.start()
     yield
+    await ai_intelligence_worker.stop()
     await document_ocr_worker.stop()
     await reminder_scheduler.stop()
     logger.info("Shutting down %s...", settings.APP_NAME)

@@ -25,3 +25,13 @@
 - `SMS_INGESTION_ENABLED=false`
 - `SMS_INGESTION_PROVIDER=none`
 - Phase 5 outgoing reminder variables (`SMTP_ENABLED`, `SMS_ENABLED`, `SMS_PROVIDER`, `SMS_WEBHOOK_URL`) remain unchanged.
+
+
+## Phase 8 — AI Expense Intelligence & Optional Groq Adapter
+- `AI_WORKER_ENABLED=true` — Enables PostgreSQL-backed `AiIntelligenceWorker` inside FastAPI lifespan (automatically disabled when `ENVIRONMENT=test`).
+- `AI_WORKER_INTERVAL_SECONDS=20` — Poll interval for claiming queued `ai_processing_jobs`.
+- `GROQ_ENABLED=false` — Explicit toggle for optional Groq LLM fallback & insight phrasing. System operates 100% deterministically locally when `false`.
+- `GROQ_API_KEY` — Optional Groq API key read exclusively on the backend (never committed or exposed to frontend).
+- `GROQ_MODEL=llama-3.3-70b-versatile` — Target Groq model when `GROQ_ENABLED=true`.
+- `GROQ_TIMEOUT_SECONDS=12.0` — Bounded request timeout per Groq completion call.
+- `GROQ_MAX_RETRIES=2` — Bounded client retry limit on transient Groq network failures.

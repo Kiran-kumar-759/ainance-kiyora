@@ -38,6 +38,18 @@ from app.models.finance import (
     LedgerJournal,
 )
 from app.models.imports import ImportBatch, ImportMappingProfile, ImportRow
+from app.models.intelligence import (
+    AiModelMetadata,
+    AiProcessingJob,
+    CategorizationFeedback,
+    FinancialInsight,
+    MerchantAlias,
+    MerchantCategoryMapping,
+    MerchantIdentity,
+    RecurringPaymentCandidate,
+    SpendingAnomaly,
+    TransactionCategorization,
+)
 from app.models.loans import (
     Loan,
     LoanInstallment,
@@ -96,4 +108,14 @@ __all__ = [
     "EmailMessageRecord",
     "EmailAttachmentRecord",
     "EmailDocumentCandidate",
+    "MerchantIdentity",
+    "MerchantAlias",
+    "MerchantCategoryMapping",
+    "TransactionCategorization",
+    "CategorizationFeedback",
+    "AiModelMetadata",
+    "RecurringPaymentCandidate",
+    "SpendingAnomaly",
+    "FinancialInsight",
+    "AiProcessingJob",
 ]

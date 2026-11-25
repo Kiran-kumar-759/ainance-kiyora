@@ -7,6 +7,7 @@ from app.api.routes import (
     documents,
     email,
     imports,
+    intelligence,
     loans,
     notifications,
     onboarding,
@@ -46,3 +47,4 @@ api_router.include_router(subscriptions.router)
 api_router.include_router(loans.router)
 api_router.include_router(documents.router)
 api_router.include_router(email.router)
+api_router.include_router(intelligence.router)

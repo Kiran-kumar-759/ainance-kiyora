@@ -273,9 +273,14 @@ export const AppShell: React.FC<AppShellProps> = ({
     {
       title: 'Intelligence',
       items: [
-        { name: 'Insights', icon: Sparkles, futurePhase: 'Phase 10' },
-        { name: 'Forecasting', icon: TrendingUp, futurePhase: 'Phase 10' },
-        { name: 'AI Assistant', icon: Bot, futurePhase: 'Phase 11' },
+        {
+          name: 'AI Insights',
+          icon: Sparkles,
+          view: 'intelligence',
+          active: currentView === 'intelligence',
+        },
+        { name: 'Forecasting', icon: TrendingUp, futurePhase: 'Phase 9' },
+        { name: 'AI Assistant', icon: Bot, futurePhase: 'Phase 10' },
       ],
     },
     {
@@ -306,7 +311,7 @@ export const AppShell: React.FC<AppShellProps> = ({
               {config.appTitle}
             </span>
             <div className="text-[10px] text-slate-400 font-mono tracking-wider">
-              INDIA SAAS • Phase 7
+              INDIA SAAS • Phase 8
             </div>
           </div>
         </div>
@@ -404,7 +409,7 @@ export const AppShell: React.FC<AppShellProps> = ({
         </div>
         <div className="flex items-center justify-between">
           <span className="text-slate-400">Active Phase</span>
-          <span className="text-emerald-400 font-medium text-[11px]">Phase 7 (Docs, OCR &amp; Email)</span>
+          <span className="text-emerald-400 font-medium text-[11px]">Phase 8 (AI Intelligence)</span>
         </div>
       </div>
     </div>
@@ -458,7 +463,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                   {config.appTitle}
                 </h1>
                 <Badge variant="info" className="whitespace-nowrap">
-                  Phase 7: Documents, OCR &amp; Email
+                  Phase 8: AI Expense Intelligence
                 </Badge>
               </div>
               <p className="text-xs text-slate-500 hidden sm:block">
