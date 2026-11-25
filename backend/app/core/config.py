@@ -94,11 +94,43 @@ class Settings(BaseSettings):
     SMS_SENDER_ID: str | None = None
     SMS_WEBHOOK_URL: str | None = None
 
-    # External Provider Conventions (Future Phases 7, 8, 10 - not required in Phase 0)
+    # Document Management, OCR & Email/SMS Ingestion (Phase 7)
+    DOCUMENT_STORAGE_DIR: str = "uploads/documents"
+    DOCUMENT_MAX_FILE_SIZE_BYTES: int = 15 * 1024 * 1024  # 15 MB
+    DOCUMENT_MAX_PDF_PAGES: int = 20
+    OCR_ENGINE: str = "rapidocr"  # rapidocr (local CPU PaddleOCR-ONNX) or paddleocr
+    OCR_USE_ANGLE_CLS: bool = True
+    OCR_WORKER_ENABLED: bool = True
+    OCR_WORKER_INTERVAL_SECONDS: int = 15
+    OCR_WORKER_MAX_CONCURRENT: int = 2
+    OCR_JOB_MAX_ATTEMPTS: int = 3
+    DOCUMENT_UPLOAD_RATE_LIMIT_MAX: int = 30  # Max uploads/processes per minute
+
+    # Gmail OAuth 2.0 & Email Ingestion (Phase 7)
+    GOOGLE_OAUTH_CLIENT_ID: str | None = None
+    GOOGLE_OAUTH_CLIENT_SECRET: str | None = None
+    GOOGLE_OAUTH_REDIRECT_URI: str = "http://127.0.0.1:8000/api/v1/email/gmail/callback"
+    GOOGLE_ALLOWED_REDIRECT_URIS: list[str] = [
+        "http://127.0.0.1:8000/api/v1/email/gmail/callback",
+        "http://localhost:8000/api/v1/email/gmail/callback",
+        "http://localhost:5173/email/gmail/callback",
+    ]
+    GMAIL_SCOPES: list[str] = ["https://www.googleapis.com/auth/gmail.readonly"]
+    EMAIL_TOKEN_ENCRYPTION_KEY: str | None = None
+    EMAIL_SYNC_DEFAULT_QUERY: str = (
+        "(bill OR invoice OR receipt OR statement OR electricity OR broadband "
+        "OR recharge OR premium OR emi OR payment) newer_than:90d"
+    )
+    EMAIL_SYNC_MAX_MESSAGES: int = 25
+
+    # Incoming SMS Ingestion Boundary (Phase 7 - disabled unless supported source configured)
+    SMS_INGESTION_ENABLED: bool = False
+    SMS_INGESTION_PROVIDER: str = "none"
+
+    # External Provider Conventions (Future Phases 8, 10 - not required in Phase 7)
     GROQ_API_KEY: str | None = None
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
     TAVILY_API_KEY: str | None = None
-    OCR_ENGINE: str = "paddleocr"
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod

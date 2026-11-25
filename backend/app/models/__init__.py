@@ -13,6 +13,20 @@ from app.models.bills import (
     BillReminder,
     Notification,
 )
+from app.models.documents import (
+    DocumentExtraction,
+    DocumentLink,
+    DocumentProcessingJob,
+    DocumentReviewEvent,
+    FinancialDocument,
+)
+from app.models.email_ingestion import (
+    EmailAttachmentRecord,
+    EmailConnection,
+    EmailDocumentCandidate,
+    EmailMessageRecord,
+    EmailSyncHistory,
+)
 from app.models.finance import (
     BankingConnection,
     BankingSyncRun,
@@ -72,4 +86,14 @@ __all__ = [
     "LoanInstallment",
     "LoanInterestRateHistory",
     "LoanPayment",
+    "FinancialDocument",
+    "DocumentProcessingJob",
+    "DocumentExtraction",
+    "DocumentReviewEvent",
+    "DocumentLink",
+    "EmailConnection",
+    "EmailSyncHistory",
+    "EmailMessageRecord",
+    "EmailAttachmentRecord",
+    "EmailDocumentCandidate",
 ]

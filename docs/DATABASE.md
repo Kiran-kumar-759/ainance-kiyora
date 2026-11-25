@@ -594,3 +594,21 @@ Added in Alembic revision **`1c2a8c9f2c32_create_subscriptions_and_loans_phase_6
   - `loans.liability_account_id` links directly to `financial_accounts(id)`.
   - Partial unique index `uq_loan_installment_active_num` on `(loan_id, installment_number) WHERE status != 'cancelled'`.
   - Partial unique index `uq_loan_payments_idempotency` on `(user_id, loan_id, idempotency_key)`.
+
+---
+
+## Phase 7: Documents, OCR Extraction, Audit Trail & Email Ingestion Schema
+
+Added in Alembic revision **`01139757d108_create_documents_ocr_email_ingestion_.py`** (`down_revision = '1c2a8c9f2c32'`):
+
+- **Document Management & OCR Tables:**
+  - `financial_documents` (`ix_fin_docs_user_hash`, `ix_fin_docs_user_status_date`): User-owned private files with opaque unique `storage_key`, SHA-256 `file_hash`, duplicate reference (`is_duplicate_of_id`), `processing_status`, and `ocr_status`.
+  - `document_processing_jobs` (`uq_doc_job_active_per_doc` partial unique index preventing duplicate active jobs): Durable PostgreSQL job queue with `attempt_count`, `max_attempts`, `next_retry_at`, and `FOR UPDATE SKIP LOCKED` support.
+  - `document_extractions` (`document_id` unique): Immutable `raw_text` & `raw_structured_data` snapshot alongside editable invoice, INR monetary (`NUMERIC(19, 2)`), Indian GST (`gstin`, `cgst`, `sgst`, `igst`, `tax_percentage`), `line_items`, `field_confidence`, `field_decisions`, and validation arrays. Missing amounts stay `NULL`.
+  - `document_review_events`: Append-only human review & correction audit trail.
+  - `document_links`: Traceable linking to `bills`, `financial_transactions`, `subscriptions`, and `loans` with partial unique indexes (`uq_doc_link_bill`, `uq_doc_link_tx`, `uq_doc_link_sub`, `uq_doc_link_loan`).
+- **Gmail Ingestion Tables:**
+  - `email_connections` (`uq_email_conn_user_provider`): Encrypted OAuth access/refresh tokens at rest (`Fernet`), read-only scopes, `last_history_id`, and `last_sync_at`.
+  - `email_sync_history`: Per-sync run metrics (`messages_scanned`, `relevant_messages`, `attachments_processed`, `duplicate_candidates`, `candidates_needing_review`, `failed_jobs`).
+  - `email_message_records` (`uq_email_msg_user_provider_msg`): Sanitized plain-text email metadata & body.
+  - `email_attachment_records` & `email_document_candidates`: Email-to-document links and human-reviewable candidate summaries with `duplicate_status` (`unique`, `uncertain_duplicate`, `exact_duplicate`).

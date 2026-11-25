@@ -4,6 +4,8 @@ from app.api.routes import (
     analytics,
     auth,
     bills,
+    documents,
+    email,
     imports,
     loans,
     notifications,
@@ -42,3 +44,5 @@ api_router.include_router(bills.router)
 api_router.include_router(notifications.router)
 api_router.include_router(subscriptions.router)
 api_router.include_router(loans.router)
+api_router.include_router(documents.router)
+api_router.include_router(email.router)

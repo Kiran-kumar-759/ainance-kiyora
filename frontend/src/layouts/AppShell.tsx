@@ -281,7 +281,12 @@ export const AppShell: React.FC<AppShellProps> = ({
     {
       title: 'Documents & Settings',
       items: [
-        { name: 'Documents', icon: FolderOpen, futurePhase: 'Phase 9' },
+        {
+          name: 'Documents',
+          icon: FolderOpen,
+          view: 'documents',
+          active: currentView === 'documents',
+        },
         { name: 'Integrations', icon: Plug, futurePhase: 'Phase 3' },
         { name: 'Settings', icon: Settings, futurePhase: 'Phase 1 Active' },
       ],
@@ -301,7 +306,7 @@ export const AppShell: React.FC<AppShellProps> = ({
               {config.appTitle}
             </span>
             <div className="text-[10px] text-slate-400 font-mono tracking-wider">
-              INDIA SAAS • Phase 6
+              INDIA SAAS • Phase 7
             </div>
           </div>
         </div>
@@ -399,7 +404,7 @@ export const AppShell: React.FC<AppShellProps> = ({
         </div>
         <div className="flex items-center justify-between">
           <span className="text-slate-400">Active Phase</span>
-          <span className="text-emerald-400 font-medium text-[11px]">Phase 6 (Subs &amp; Loans)</span>
+          <span className="text-emerald-400 font-medium text-[11px]">Phase 7 (Docs, OCR &amp; Email)</span>
         </div>
       </div>
     </div>
@@ -453,7 +458,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                   {config.appTitle}
                 </h1>
                 <Badge variant="info" className="whitespace-nowrap">
-                  Phase 6: Subscriptions &amp; Loans
+                  Phase 7: Documents, OCR &amp; Email
                 </Badge>
               </div>
               <p className="text-xs text-slate-500 hidden sm:block">

@@ -104,3 +104,24 @@ Mutating endpoints (`POST`, `PATCH`, `PUT`, `DELETE`) require `X-CSRF-Token` alo
 - `POST /api/v1/loans/{id}/rate-revision` — Floating/fixed interest rate update preserving historical paid installments and regenerating unpaid schedule (`recalculate_emi` or `adjust_tenure`).
 - `POST /api/v1/loans/{id}/prepayment-scenario` — Hypothetical lump-sum / extra EMI / fee simulation (read-only, zero DB/ledger side effects).
 - `POST /api/v1/loans/{id}/payments`, `/payments/link-transaction`, `/payments/{payment_id}/reverse` — Atomic split accounting: principal paid posts as `FinancialTransfer` reducing `loan_liability` (not expense); interest paid posts as `Loan Interest` expense in double-entry ledger & Phase 4 analytics.
+
+---
+
+## 7. Document Management & Local OCR (`/api/v1/documents` — Phase 7)
+
+- `POST /api/v1/documents/upload` (`201`) — Rate-limited multipart upload (PDF, PNG, JPG, JPEG, WebP), magic-byte validation, SHA-256 duplicate detection, opaque UUID storage, and async OCR queueing.
+- `GET /api/v1/documents`, `/overview`, `/processing-history` — Overview metrics, searchable/filterable paginated library, and job status/retry history.
+- `GET /api/v1/documents/{document_id}`, `DELETE /api/v1/documents/{document_id}` — Detailed metadata + extraction + audit trail; deletion cleans DB and private disk file.
+- `GET /api/v1/documents/{document_id}/download`, `/preview?page=N` — Authenticated private download & page-rendered PNG preview with `X-Content-Type-Options: nosniff`.
+- `POST /api/v1/documents/{document_id}/process`, `GET /processing-status` — Re-queue failed/pending OCR jobs and poll job status.
+- `GET /api/v1/documents/{document_id}/extraction`, `PATCH /extraction` — View immutable raw OCR evidence & structured fields; save human edits and per-field `accepted`/`rejected` decisions cleanly.
+- `POST /api/v1/documents/{document_id}/confirm`, `/reject`, `/link` — Human confirmation workflow creating unpaid bills (`BillService`), ledger transactions (`TransactionService`), or linking existing Phase 2–6 records atomically.
+
+---
+
+## 8. Gmail OAuth Ingestion & SMS Boundary (`/api/v1/email` — Phase 7)
+
+- `GET /api/v1/email/connections`, `GET /gmail/connect`, `GET /gmail/callback`, `POST /gmail/disconnect` — Read-only (`gmail.readonly`) Google OAuth 2.0 connection lifecycle with HMAC-SHA256 state verification & Fernet token encryption at rest.
+- `POST /api/v1/email/gmail/sync`, `GET /sync-history` — Incremental `historyId` / query financial sync producing private attachments and reviewable candidates.
+- `GET /api/v1/email/candidates`, `GET /candidates/{id}`, `POST /candidates/{id}/confirm`, `/reject` — Review, duplicate-warning inspection, confirmation, and rejection workflows.
+- `GET /api/v1/email/sms/status` — Explicit SMS ingestion availability boundary (`available: false` in web SaaS without native Android companion).

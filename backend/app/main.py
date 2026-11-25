@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.core.logging import setup_logging
 from app.db.session import check_db_readiness, engine
 from app.services.bills.scheduler import reminder_scheduler
+from app.services.documents.worker import document_ocr_worker
 
 # Initialize logging
 setup_logging(debug=settings.DEBUG)
@@ -35,7 +36,9 @@ async def lifespan(app: FastAPI):
             db_check.get("error"),
         )
     reminder_scheduler.start()
+    document_ocr_worker.start()
     yield
+    await document_ocr_worker.stop()
     await reminder_scheduler.stop()
     logger.info("Shutting down %s...", settings.APP_NAME)
     engine.dispose()
