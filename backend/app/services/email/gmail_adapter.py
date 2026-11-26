@@ -136,11 +136,19 @@ class GmailApiAdapter(EmailProviderAdapter):
             }
         }
 
-    def build_authorization_url(self, *, state: str, redirect_uri: str) -> str:
+    def build_authorization_url(
+        self,
+        *,
+        state: str,
+        redirect_uri: str,
+        code_verifier: str | None = None,
+    ) -> str:
         flow = Flow.from_client_config(
             self._client_config(redirect_uri),
             scopes=list(settings.GMAIL_SCOPES),
             redirect_uri=redirect_uri,
+            code_verifier=code_verifier,
+            autogenerate_code_verifier=(code_verifier is None),
         )
         auth_url, _ = flow.authorization_url(
             access_type="offline",
@@ -150,11 +158,19 @@ class GmailApiAdapter(EmailProviderAdapter):
         )
         return auth_url
 
-    def exchange_code(self, *, code: str, redirect_uri: str) -> OAuthTokenBundle:
+    def exchange_code(
+        self,
+        *,
+        code: str,
+        redirect_uri: str,
+        code_verifier: str | None = None,
+    ) -> OAuthTokenBundle:
         flow = Flow.from_client_config(
             self._client_config(redirect_uri),
             scopes=list(settings.GMAIL_SCOPES),
             redirect_uri=redirect_uri,
+            code_verifier=code_verifier,
+            autogenerate_code_verifier=False,
         )
         flow.fetch_token(code=code)
         creds = flow.credentials

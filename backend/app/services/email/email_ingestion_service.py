@@ -1,4 +1,6 @@
 import datetime as dt
+import inspect
+import secrets
 import uuid
 from decimal import Decimal
 from pathlib import Path
@@ -174,8 +176,14 @@ class EmailIngestionService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Untrusted OAuth redirect_uri rejected.",
             )
-        state = create_oauth_state(user.id, target_uri)
-        auth_url = adp.build_authorization_url(state=state, redirect_uri=target_uri)
+        code_verifier = secrets.token_urlsafe(48)
+        state = create_oauth_state(user.id, target_uri, code_verifier=code_verifier)
+        if "code_verifier" in inspect.signature(adp.build_authorization_url).parameters:
+            auth_url = adp.build_authorization_url(
+                state=state, redirect_uri=target_uri, code_verifier=code_verifier
+            )
+        else:
+            auth_url = adp.build_authorization_url(state=state, redirect_uri=target_uri)
         return GmailConnectUrlResponse(
             authorization_url=auth_url,
             state=state,
@@ -206,8 +214,14 @@ class EmailIngestionService:
         if redirect_uri not in settings.GOOGLE_ALLOWED_REDIRECT_URIS:
             raise HTTPException(status_code=400, detail="Invalid redirect_uri in state.")
 
+        code_verifier = state_payload.get("cv")
         try:
-            tokens = adp.exchange_code(code=code, redirect_uri=redirect_uri)
+            if "code_verifier" in inspect.signature(adp.exchange_code).parameters:
+                tokens = adp.exchange_code(
+                    code=code, redirect_uri=redirect_uri, code_verifier=code_verifier
+                )
+            else:
+                tokens = adp.exchange_code(code=code, redirect_uri=redirect_uri)
         except Exception as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

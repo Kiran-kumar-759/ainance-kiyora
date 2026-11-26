@@ -308,3 +308,62 @@ def test_gmail_oauth_encryption_incremental_sync_duplicates_and_sms_boundary(
     assert disc.status_code == 200
     assert disc.json()["status"] == "disconnected"
     assert fake_adapter.revoked is True
+
+
+def test_gmail_oauth_pkce_code_verifier_roundtrip(monkeypatch: pytest.MonkeyPatch):
+    """Verifies GmailApiAdapter sends matching PKCE code_challenge and encrypted code_verifier."""
+    from urllib.parse import parse_qs, urlparse
+
+    from app.services.email.gmail_adapter import GmailApiAdapter
+    from app.services.email.oauth_state import create_oauth_state, verify_oauth_state
+
+    monkeypatch.setattr(settings, "GOOGLE_OAUTH_CLIENT_ID", "pkce-test-client-id")
+    monkeypatch.setattr(settings, "GOOGLE_OAUTH_CLIENT_SECRET", "pkce-test-client-secret")
+
+    uid = uuid.uuid4()
+    redirect_uri = "http://127.0.0.1:8000/api/v1/email/gmail/callback"
+    code_verifier = "pkce_secret_verifier_value_for_test_1234567890"
+
+    state = create_oauth_state(uid, redirect_uri, code_verifier=code_verifier)
+    assert code_verifier not in state  # encrypted, never plaintext in state URL
+
+    adp = GmailApiAdapter()
+    auth_url = adp.build_authorization_url(
+        state=state, redirect_uri=redirect_uri, code_verifier=code_verifier
+    )
+    qs = parse_qs(urlparse(auth_url).query)
+    assert "code_challenge" in qs and qs["code_challenge_method"] == ["S256"]
+
+    verified = verify_oauth_state(state, uid)
+    assert verified.get("cv") == code_verifier
+
+    captured: dict = {}
+
+    class DummyFlow:
+        def __init__(self, **kw):
+            self.credentials = type(
+                "C",
+                (),
+                {
+                    "token": "ya29.pkce-tok",
+                    "refresh_token": "1//pkce-ref",
+                    "expiry": None,
+                    "scopes": ["https://www.googleapis.com/auth/gmail.readonly"],
+                },
+            )()
+
+        def fetch_token(self, code: str):
+            captured["code"] = code
+
+    def fake_from_client_config(cfg, scopes=None, redirect_uri=None, code_verifier=None, **kw):
+        captured["exchange_code_verifier"] = code_verifier
+        return DummyFlow()
+
+    monkeypatch.setattr("app.services.email.gmail_adapter.Flow.from_client_config", fake_from_client_config)
+    monkeypatch.setattr(adp, "_fetch_profile_email", lambda creds: "pkce.user@gmail.com")
+
+    bundle = adp.exchange_code(
+        code="4/auth-code-123", redirect_uri=redirect_uri, code_verifier=verified["cv"]
+    )
+    assert captured["exchange_code_verifier"] == code_verifier
+    assert bundle.email_address == "pkce.user@gmail.com"

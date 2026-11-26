@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
@@ -43,6 +43,7 @@ def get_gmail_connect_url(
 
 @router.get("/gmail/callback")
 def handle_gmail_oauth_callback(
+    request: Request,
     code: str = Query(...),
     state: str = Query(...),
     redirect_to_frontend: bool = Query(False),
@@ -50,11 +51,13 @@ def handle_gmail_oauth_callback(
     current_user: User = Depends(get_current_user),
 ):
     conn = email_service.handle_gmail_callback(db, current_user, code=code, state=state)
-    if redirect_to_frontend:
-        target = f"{settings.FRONTEND_URL}?view=documents&tab=email&gmail=connected"
+    wants_html = redirect_to_frontend or "text/html" in (request.headers.get("accept") or "").lower()
+    if wants_html:
+        target = f"{settings.FRONTEND_URL}?view=integrations&gmail=connected"
         return HTMLResponse(
             f'<html><head><meta http-equiv="refresh" content="0;url={target}" /></head>'
-            f'<body>Gmail connected cleanly. Redirecting...</body></html>'
+            f'<body>Gmail connected cleanly for {conn.email_address or "your account"}. '
+            f'<a href="{target}">Return to app</a></body></html>'
         )
     return conn
 
