@@ -72,7 +72,7 @@ function formatPaidDuration(s: Subscription): string {
   return `${cleanMonths} ${moWord} (${completedCount} ${payWord})`;
 }
 
-export const SubscriptionsPage: React.FC<SubscriptionsPageProps> = () => {
+export const SubscriptionsPage: React.FC<SubscriptionsPageProps> = ({ onNavigate }) => {
   const [tab, setTab] = useState<SubTab>('active');
   const [overview, setOverview] = useState<SubscriptionOverview | null>(null);
   const [subs, setSubs] = useState<Subscription[]>([]);
@@ -219,8 +219,15 @@ export const SubscriptionsPage: React.FC<SubscriptionsPageProps> = () => {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
+            onClick={() => onNavigate('reminders')}
+            className="inline-flex items-center space-x-1.5 px-3 py-2 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-semibold transition-colors"
+          >
+            <span>Reminders &amp; Logs &rarr;</span>
+          </button>
+          <button
+            type="button"
             onClick={handleRunReminders}
-            className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-lg text-xs font-semibold shadow-sm"
+            className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-semibold shadow-sm"
           >
             <Bell className="w-4 h-4 text-indigo-600" />
             <span>Run Renewal Reminders</span>
@@ -232,7 +239,7 @@ export const SubscriptionsPage: React.FC<SubscriptionsPageProps> = () => {
               setDraftSub(null);
               setFormOpen(true);
             }}
-            className="inline-flex items-center space-x-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium shadow-sm"
+            className="inline-flex items-center space-x-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium shadow-sm transition-colors"
           >
             <Plus className="w-4 h-4" />
             <span>Add Subscription</span>

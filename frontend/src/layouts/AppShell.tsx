@@ -5,8 +5,6 @@ import {
   Wallet,
   Receipt,
   FileSpreadsheet,
-  PieChart,
-  Target,
   FileText,
   CalendarDays,
   CreditCard,
@@ -28,14 +26,16 @@ import {
   Sliders,
   Smartphone,
   ChevronRight,
+  ChevronLeft,
   LogIn,
   UserPlus,
   ArrowRightLeft,
   Landmark,
   Bell,
+  BellRing,
   CheckCheck,
+  Home,
 } from 'lucide-react';
-import { config } from '../lib/config';
 import { Badge } from '../components/common/Badge';
 import { useAuth } from '../context/AuthContext';
 import { authApi } from '../services/authApi';
@@ -52,16 +52,43 @@ interface AppShellProps {
   onNavigate: (view: string) => void;
 }
 
+interface NavItem {
+  name: string;
+  icon: React.ElementType;
+  view: string;
+  active?: boolean;
+}
+
 interface NavSection {
   title: string;
-  items: {
-    name: string;
-    icon: React.ElementType;
-    view?: string;
-    active?: boolean;
-    futurePhase?: string;
-  }[];
+  items: NavItem[];
 }
+
+const VIEW_TITLES: Record<string, { title: string; subtitle: string }> = {
+  dashboard: { title: 'Financial Overview', subtitle: 'Balances, cashflow, upcoming commitments & AI highlights' },
+  analytics: { title: 'Spending Analytics', subtitle: 'Cashflow trends, category deep-dives & period comparisons' },
+  reports: { title: 'Financial Reports', subtitle: 'Statements, monthly summaries & CSV exports' },
+  accounts: { title: 'Accounts & Cards', subtitle: 'Bank balances, credit limits, wallets & investments' },
+  transactions: { title: 'Transactions Ledger', subtitle: 'Filterable income, expense & recurring ledger' },
+  transfers: { title: 'Internal Transfers', subtitle: 'Zero-sum fund movements across your accounts' },
+  imports: { title: 'Bank Statement Imports', subtitle: 'CSV & XLSX column mapping, deduplication & commit' },
+  banking: { title: 'Bank Connections', subtitle: 'Connected bank feeds & sync audit history' },
+  bills: { title: 'Bills & Utilities', subtitle: 'Scheduled obligations, partial payments & recurring templates' },
+  subscriptions: { title: 'OTT & Subscriptions', subtitle: 'Recurring plans, paid months tracker & renewal hygiene' },
+  loans: { title: 'Loans & EMIs', subtitle: 'Amortization schedules, rate revisions & prepayments' },
+  reminders: { title: 'Reminders & Notifications', subtitle: 'Commitment alerts, dispatch logs & SMTP email status' },
+  intelligence: { title: 'AI Expense Intelligence', subtitle: 'Anomaly detection, recurring discovery & ML rules' },
+  forecasting: { title: 'Cashflow Forecasting', subtitle: 'Multi-horizon projections, stress scenarios & backtests' },
+  assistant: { title: 'AI Finance Assistant', subtitle: 'Grounded ledger RAG, web research & voice actions' },
+  documents: { title: 'Documents & Email Imports', subtitle: 'OCR receipt review, vault & Gmail bill ingestion' },
+  integrations: { title: 'Integrations Center', subtitle: 'Gmail, SMTP delivery, Groq AI, web search & OCR status' },
+  settings: { title: 'Workspace Settings', subtitle: 'Profile, security, regional preferences & AI controls' },
+  profile: { title: 'My Profile', subtitle: 'Identity & account details' },
+  preferences: { title: 'Regional Preferences', subtitle: 'Currency (INR), timezone & notification channels' },
+  sessions: { title: 'Active Sessions', subtitle: 'Device sessions & security controls' },
+  onboarding: { title: 'Setup & Onboarding', subtitle: 'Configure your personal finance workspace' },
+  foundation: { title: 'Platform Overview & Status', subtitle: 'Live backend readiness & product architecture' },
+};
 
 export const AppShell: React.FC<AppShellProps> = ({
   children,
@@ -73,6 +100,8 @@ export const AppShell: React.FC<AppShellProps> = ({
   onNavigate,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const { user, preferences, isAuthenticated, logout } = useAuth();
   const compactSidebar = Boolean(preferences?.notification_preferences?.compact_sidebar);
   const [resendStatus, setResendStatus] = useState<string | null>(null);
@@ -139,595 +168,566 @@ export const AppShell: React.FC<AppShellProps> = ({
   };
 
   const handleLogout = async () => {
+    setUserMenuOpen(false);
     await logout();
     onNavigate('login');
   };
 
   const navigationSections: NavSection[] = [
     {
-      title: 'Current Foundation',
+      title: 'Overview',
       items: [
-        {
-          name: 'System Foundation',
-          icon: ShieldCheck,
-          view: 'foundation',
-          active: currentView === 'foundation',
-        },
-      ],
-    },
-    ...(isAuthenticated
-      ? [
-          {
-            title: 'Account & Identity',
-            items: [
-              {
-                name: 'My Profile',
-                icon: UserIcon,
-                view: 'profile',
-                active: currentView === 'profile',
-              },
-              {
-                name: 'Regional Preferences',
-                icon: Sliders,
-                view: 'preferences',
-                active: currentView === 'preferences',
-              },
-              {
-                name: 'Active Sessions',
-                icon: Smartphone,
-                view: 'sessions',
-                active: currentView === 'sessions',
-              },
-              {
-                name: 'Onboarding Wizard',
-                icon: Sparkles,
-                view: 'onboarding',
-                active: currentView === 'onboarding',
-              },
-            ],
-          },
-        ]
-      : []),
-    {
-      title: 'Financial Engine',
-      items: [
-        {
-          name: 'Dashboard',
-          icon: LayoutDashboard,
-          view: 'dashboard',
-          active: currentView === 'dashboard',
-        },
-        {
-          name: 'Accounts',
-          icon: Wallet,
-          view: 'accounts',
-          active: currentView === 'accounts',
-        },
-        {
-          name: 'Transactions',
-          icon: Receipt,
-          view: 'transactions',
-          active: currentView === 'transactions',
-        },
-        {
-          name: 'Transfers',
-          icon: ArrowRightLeft,
-          view: 'transfers',
-          active: currentView === 'transfers',
-        },
-        {
-          name: 'Bank Connections',
-          icon: Landmark,
-          view: 'banking',
-          active: currentView === 'banking',
-        },
-        {
-          name: 'Analytics',
-          icon: BarChart3,
-          view: 'analytics',
-          active: currentView === 'analytics',
-        },
-        {
-          name: 'Reports',
-          icon: FileText,
-          view: 'reports',
-          active: currentView === 'reports',
-        },
+        { name: 'Dashboard', icon: LayoutDashboard, view: 'dashboard', active: currentView === 'dashboard' },
+        { name: 'Analytics', icon: BarChart3, view: 'analytics', active: currentView === 'analytics' },
+        { name: 'Reports', icon: FileText, view: 'reports', active: currentView === 'reports' },
       ],
     },
     {
       title: 'Money Management',
       items: [
-        {
-          name: 'Imports',
-          icon: FileSpreadsheet,
-          view: 'imports',
-          active: currentView === 'imports',
-        },
-        { name: 'Budgets', icon: PieChart, futurePhase: 'Phase 6' },
-        { name: 'Savings Goals', icon: Target, futurePhase: 'Phase 6' },
+        { name: 'Accounts', icon: Wallet, view: 'accounts', active: currentView === 'accounts' },
+        { name: 'Transactions', icon: Receipt, view: 'transactions', active: currentView === 'transactions' },
+        { name: 'Transfers', icon: ArrowRightLeft, view: 'transfers', active: currentView === 'transfers' },
+        { name: 'Imports', icon: FileSpreadsheet, view: 'imports', active: currentView === 'imports' },
+        { name: 'Bank Connections', icon: Landmark, view: 'banking', active: currentView === 'banking' },
       ],
     },
     {
       title: 'Payments & Commitments',
       items: [
+        { name: 'Bills', icon: CalendarDays, view: 'bills', active: currentView === 'bills' },
+        { name: 'Subscriptions', icon: CreditCard, view: 'subscriptions', active: currentView === 'subscriptions' },
+        { name: 'Loans & EMIs', icon: Landmark, view: 'loans', active: currentView === 'loans' },
         {
-          name: 'Bills',
-          icon: CalendarDays,
-          view: 'bills',
-          active: currentView === 'bills',
-        },
-        {
-          name: 'Subscriptions',
-          icon: CreditCard,
-          view: 'subscriptions',
-          active: currentView === 'subscriptions',
-        },
-        {
-          name: 'Loans & EMIs',
-          icon: FileText,
-          view: 'loans',
-          active: currentView === 'loans',
+          name: 'Reminders & Notifications',
+          icon: BellRing,
+          view: 'reminders',
+          active: currentView === 'reminders',
         },
       ],
     },
     {
       title: 'Intelligence',
       items: [
-        {
-          name: 'AI Insights',
-          icon: Sparkles,
-          view: 'intelligence',
-          active: currentView === 'intelligence',
-        },
-        {
-          name: 'Forecasting',
-          icon: TrendingUp,
-          view: 'forecasting',
-          active: currentView === 'forecasting',
-        },
-        {
-          name: 'AI Assistant',
-          icon: Bot,
-          view: 'assistant',
-          active: currentView === 'assistant',
-        },
+        { name: 'AI Insights', icon: Sparkles, view: 'intelligence', active: currentView === 'intelligence' },
+        { name: 'Forecasting', icon: TrendingUp, view: 'forecasting', active: currentView === 'forecasting' },
+        { name: 'AI Assistant', icon: Bot, view: 'assistant', active: currentView === 'assistant' },
       ],
     },
     {
       title: 'Documents & Settings',
       items: [
-        {
-          name: 'Documents',
-          icon: FolderOpen,
-          view: 'documents',
-          active: currentView === 'documents',
-        },
-        {
-          name: 'Integrations',
-          icon: Plug,
-          view: 'integrations',
-          active: currentView === 'integrations',
-        },
-        {
-          name: 'Settings',
-          icon: Settings,
-          view: 'settings',
-          active: currentView === 'settings',
-        },
+        { name: 'Documents', icon: FolderOpen, view: 'documents', active: currentView === 'documents' },
+        { name: 'Integrations', icon: Plug, view: 'integrations', active: currentView === 'integrations' },
+        { name: 'Settings', icon: Settings, view: 'settings', active: currentView === 'settings' },
+        ...(isAuthenticated
+          ? [
+              {
+                name: 'Onboarding Wizard',
+                icon: Sparkles,
+                view: 'onboarding',
+                active: currentView === 'onboarding',
+              },
+            ]
+          : []),
       ],
     },
   ];
 
-  const sidebarContent = (
-    <div className="flex flex-col h-full bg-slate-900 text-slate-300">
+  const handleNavClick = (view: string) => {
+    onNavigate(view);
+    setMobileMenuOpen(false);
+    setUserMenuOpen(false);
+  };
+
+  const viewMeta = VIEW_TITLES[currentView] || {
+    title: 'FinSight AI Workspace',
+    subtitle: 'Personal Finance Manager — India',
+  };
+
+  const renderSidebarContent = (collapsed: boolean) => (
+    <div className="flex flex-col h-full bg-navy-900 text-slate-300 border-r border-slate-800/80">
       {/* Brand Header */}
-      <div className="px-6 py-5 border-b border-slate-800 flex items-center justify-between">
-        <div className="flex items-center space-x-2">
-          <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-bold text-lg">
+      <div className="h-16 px-4 flex items-center justify-between border-b border-slate-800/80 shrink-0">
+        <button
+          type="button"
+          onClick={() => handleNavClick(isAuthenticated ? 'dashboard' : 'foundation')}
+          className="flex items-center gap-2.5 text-left group focus:outline-none"
+          title="FinSight AI Home"
+        >
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-bold text-sm shadow-md shadow-indigo-950/50 shrink-0 group-hover:scale-105 transition-transform">
             ₹
           </div>
-          <div>
-            <span className="font-semibold text-white tracking-tight text-sm">
-              {config.appTitle}
-            </span>
-            <div className="text-[10px] text-slate-400 font-mono tracking-wider">
-              INDIA SAAS • Phase 10
+          {!collapsed && (
+            <div className="min-w-0">
+              <h1 className="text-sm font-bold text-white leading-tight truncate">FinSight AI</h1>
+              <p className="text-[10px] text-indigo-300 font-medium tracking-wider uppercase">
+                India Finance
+              </p>
             </div>
-          </div>
-        </div>
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setSidebarCollapsed((c) => !c)}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          className="hidden lg:flex p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+        >
+          {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+        </button>
+
+        <button
+          type="button"
+          className="lg:hidden p-1.5 text-slate-400 hover:text-white"
+          onClick={() => setMobileMenuOpen(false)}
+          aria-label="Close navigation menu"
+        >
+          <X className="w-5 h-5" />
+        </button>
       </div>
 
-      {/* User Info Tile (if logged in) */}
-      {isAuthenticated && user && (
-        <div className="px-4 py-3 mx-3 my-2 rounded-xl bg-slate-800/80 border border-slate-700/60 flex items-center justify-between">
-          <div className="flex items-center space-x-2.5 overflow-hidden">
-            <div className="w-8 h-8 rounded-lg bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 flex items-center justify-center font-bold text-xs flex-shrink-0">
-              {user.full_name ? user.full_name.charAt(0).toUpperCase() : 'U'}
-            </div>
-            <div className="min-w-0">
-              <div className="text-xs font-semibold text-white truncate">{user.full_name}</div>
-              <div className="text-[10px] text-slate-400 truncate font-mono">{user.email}</div>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={handleLogout}
-            title="Sign Out"
-            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-700/60 transition-colors"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-
       {/* Navigation Sections */}
-      <div
-        className={`flex-1 overflow-y-auto px-4 scrollbar-thin ${
-          compactSidebar ? 'py-2 space-y-3' : 'py-3 space-y-5'
-        }`}
-      >
+      <div className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
         {navigationSections.map((section) => (
           <div key={section.title}>
-            <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider px-3 mb-1.5">
-              {section.title}
-            </div>
-            <div className="space-y-0.5">
+            {!collapsed && (
+              <p className="px-2.5 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                {section.title}
+              </p>
+            )}
+            <ul className="space-y-0.5">
               {section.items.map((item) => {
                 const Icon = item.icon;
-                if (item.view) {
-                  return (
+                return (
+                  <li key={item.view}>
                     <button
                       type="button"
-                      key={item.name}
-                      onClick={() => {
-                        onNavigate(item.view!);
-                        setMobileMenuOpen(false);
-                      }}
-                      className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                      onClick={() => handleNavClick(item.view)}
+                      aria-label={item.name}
+                      title={collapsed ? item.name : undefined}
+                      className={`w-full flex items-center ${
+                        collapsed ? 'justify-center px-2' : 'justify-between px-2.5'
+                      } ${compactSidebar ? 'py-1.5' : 'py-2'} rounded-xl text-xs font-medium transition-all duration-150 ${
                         item.active
-                          ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-500/30'
-                          : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                          ? 'bg-gradient-to-r from-indigo-600/25 to-violet-600/15 text-white border border-indigo-500/35 shadow-sm'
+                          : 'text-slate-400 hover:bg-slate-800/80 hover:text-slate-100 border border-transparent'
                       }`}
                     >
-                      <div className="flex items-center space-x-2.5">
-                        <Icon className={`w-4 h-4 ${item.active ? 'text-emerald-400' : 'text-slate-400'}`} />
-                        <span>{item.name}</span>
-                      </div>
-                      {item.active && (
-                        <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                      <span className="flex items-center gap-2.5 min-w-0">
+                        <Icon
+                          className={`w-4 h-4 shrink-0 ${
+                            item.active ? 'text-indigo-400' : 'text-slate-400'
+                          }`}
+                        />
+                        {!collapsed && <span className="truncate">{item.name}</span>}
+                      </span>
+                      {!collapsed && item.active && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" />
                       )}
                     </button>
-                  );
-                }
-
-                return (
-                  <div
-                    key={item.name}
-                    className="flex items-center justify-between px-3 py-1.5 rounded-lg text-slate-500 text-xs select-none group"
-                    title={`Scheduled for ${item.futurePhase}`}
-                  >
-                    <div className="flex items-center space-x-2.5">
-                      <Icon className="w-4 h-4 text-slate-600 group-hover:text-slate-500" />
-                      <span>{item.name}</span>
-                    </div>
-                    {item.futurePhase && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800/80 text-slate-500 font-mono border border-slate-800">
-                        {item.futurePhase}
-                      </span>
-                    )}
-                  </div>
+                  </li>
                 );
               })}
-            </div>
+            </ul>
           </div>
         ))}
       </div>
 
-      {/* Sidebar Footer */}
-      <div className="p-4 border-t border-slate-800 bg-slate-950/40 text-xs">
-        <div className="flex items-center justify-between mb-1.5">
-          <span className="text-slate-400">Environment</span>
-          <span className="text-slate-300 font-mono text-[11px] bg-slate-800 px-2 py-0.5 rounded">
-            Development
-          </span>
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="text-slate-400">Active Phase</span>
-          <span className="text-emerald-400 font-medium text-[11px]">Phase 10 (AI Assistant)</span>
-        </div>
+      {/* Bottom Health & Foundation Link */}
+      <div className="p-3 border-t border-slate-800/80 space-y-2 shrink-0 bg-navy-950/60">
+        {!collapsed ? (
+          <>
+            <button
+              type="button"
+              onClick={() => handleNavClick('foundation')}
+              className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-[11px] font-medium text-slate-400 hover:bg-slate-800/80 hover:text-slate-100 transition-colors"
+            >
+              <span className="flex items-center gap-2">
+                <Home className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Public Overview & Status</span>
+              </span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+            <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-slate-900/90 border border-slate-800 text-[11px]">
+              <span className="flex items-center gap-1.5 text-slate-400">
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    backendReachable && databaseReady
+                      ? 'bg-emerald-400'
+                      : backendReachable
+                      ? 'bg-amber-400'
+                      : 'bg-rose-500'
+                  }`}
+                />
+                <span>API & PostgreSQL</span>
+              </span>
+              <span className="font-semibold text-slate-200">
+                {backendReachable && databaseReady
+                  ? 'Healthy'
+                  : backendReachable
+                  ? 'Degraded'
+                  : 'Offline'}
+              </span>
+            </div>
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={() => handleNavClick('foundation')}
+            aria-label="Public Overview & Status"
+            title="Public Overview & Status"
+            className="w-full flex justify-center py-2 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white"
+          >
+            <ShieldCheck className="w-4 h-4 text-indigo-400" />
+          </button>
+        )}
+
+        {!isAuthenticated && !collapsed && (
+          <div className="grid grid-cols-2 gap-1.5 pt-1">
+            <button
+              type="button"
+              onClick={() => handleNavClick('login')}
+              className="flex items-center justify-center gap-1 py-1.5 text-xs font-medium rounded-lg bg-slate-800 text-slate-200 hover:bg-slate-700"
+            >
+              <LogIn className="w-3 h-3" />
+              <span>Login</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleNavClick('register')}
+              className="flex items-center justify-center gap-1 py-1.5 text-xs font-medium rounded-lg bg-indigo-600 text-white hover:bg-indigo-500"
+            >
+              <UserPlus className="w-3 h-3" />
+              <span>Register</span>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
 
   return (
-    <div className="min-h-screen flex bg-slate-50">
+    <div className="min-h-screen flex bg-slate-50 text-slate-900">
       {/* Desktop Sidebar */}
       <aside
-        className={`hidden lg:block flex-shrink-0 border-r border-slate-800 ${
-          compactSidebar ? 'w-60' : 'w-72'
+        className={`hidden lg:block shrink-0 transition-all duration-200 ${
+          sidebarCollapsed ? 'w-[72px]' : 'w-64'
         }`}
       >
-        <div className={`fixed top-0 bottom-0 ${compactSidebar ? 'w-60' : 'w-72'}`}>
-          {sidebarContent}
-        </div>
+        <div className="sticky top-0 h-screen">{renderSidebarContent(sidebarCollapsed)}</div>
       </aside>
 
       {/* Mobile Drawer */}
       {mobileMenuOpen && (
-        <div className="lg:hidden fixed inset-0 z-50 flex">
+        <div className="fixed inset-0 z-50 lg:hidden flex">
           <div
-            className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity"
+            className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs"
             onClick={() => setMobileMenuOpen(false)}
           />
-          <div className="relative flex-1 flex flex-col max-w-xs w-full bg-slate-900">
-            <div className="absolute top-3 right-3">
-              <button
-                type="button"
-                className="p-1.5 rounded-md text-slate-400 hover:text-white"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            {sidebarContent}
-          </div>
+          <aside className="relative z-10 w-72 max-w-[85vw] h-full shadow-2xl">
+            {renderSidebarContent(false)}
+          </aside>
         </div>
       )}
 
-      {/* Main Content Area */}
+      {/* Main Column */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Top Navbar */}
-        <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-sm border-b border-slate-200/80 px-4 sm:px-8 py-3.5 flex items-center justify-between shadow-xs">
-          <div className="flex items-center space-x-3">
+        {/* Sticky Glass Topbar */}
+        <header className="sticky top-0 z-30 h-16 px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-3 bg-white/85 backdrop-blur-md border-b border-slate-200/80">
+          <div className="flex items-center gap-3 min-w-0">
             <button
               type="button"
-              className="lg:hidden p-2 rounded-lg text-slate-600 hover:bg-slate-100"
+              className="lg:hidden p-2 -ml-1.5 rounded-lg text-slate-600 hover:bg-slate-100"
               onClick={() => setMobileMenuOpen(true)}
-              aria-label="Open sidebar"
+              aria-label="Open navigation menu"
             >
               <Menu className="w-5 h-5" />
             </button>
-            <div>
-              <div className="flex items-center space-x-2">
-                <h1 className="text-base sm:text-lg font-semibold text-slate-900 tracking-tight whitespace-nowrap">
-                  {config.appTitle}
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h1 className="text-sm sm:text-base font-bold text-slate-900 truncate">
+                  {viewMeta.title}
                 </h1>
-                <Badge variant="info" className="whitespace-nowrap">
-                  Phase 10: AI Assistant, RAG &amp; Research
+                <Badge variant="info" className="hidden md:inline-flex">
+                  {preferences?.preferred_currency || 'INR'} • {preferences?.locale || 'en-IN'}
                 </Badge>
               </div>
-              <p className="text-xs text-slate-500 hidden sm:block">
-                Multi-User SaaS Architecture • India Locale (INR, en-IN, Asia/Kolkata)
+              <p className="text-[11px] text-slate-500 truncate hidden sm:block">
+                {viewMeta.subtitle}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center space-x-3">
-            {/* Live Status Indicators */}
-            <div className="hidden md:flex items-center space-x-2 text-xs">
-              <div
-                className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-full border ${
-                  backendReachable
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                    : 'bg-rose-50 text-rose-700 border-rose-200'
-                }`}
-              >
-                <Server className="w-3.5 h-3.5" />
-                <span>Backend: {backendReachable ? 'Live' : 'Offline'}</span>
-              </div>
-
-              <div
-                className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-full border ${
-                  databaseReady
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                    : 'bg-rose-50 text-rose-700 border-rose-200'
-                }`}
-              >
-                <Database className="w-3.5 h-3.5" />
-                <span>PostgreSQL: {databaseReady ? 'Ready' : 'Down'}</span>
-              </div>
-            </div>
-
-            {/* Health check refresh button */}
+          {/* Right Controls */}
+          <div className="flex items-center gap-2 shrink-0">
             <button
-              onClick={onRefresh}
-              disabled={isLoading}
-              className="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-xs disabled:opacity-50"
-              title="Refresh backend and database status"
+              type="button"
+              onClick={() => onNavigate('assistant')}
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-indigo-50 to-violet-50 hover:from-indigo-100 hover:to-violet-100 border border-indigo-200/80 text-indigo-700 text-xs font-semibold transition-colors"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-emerald-600' : ''}`} />
-              <span className="hidden sm:inline">Health</span>
+              <Bot className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Ask AI</span>
             </button>
 
-            {/* Auth Action Buttons in Header */}
-            {isAuthenticated ? (
-              <div className="flex items-center space-x-2 relative">
-                {/* Notification Bell */}
-                <div className="relative">
-                  <button
-                    type="button"
-                    aria-label="Notifications"
-                    onClick={() => {
-                      const next = !notificationsOpen;
-                      setNotificationsOpen(next);
-                      if (next) void loadNotifications();
-                    }}
-                    className="relative inline-flex items-center justify-center p-2 text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
-                    title="Bill & payment notifications"
-                  >
-                    <Bell className="w-4 h-4" />
-                    {unreadCount > 0 && (
-                      <span
-                        data-testid="unread-notifications-badge"
-                        className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 flex items-center justify-center text-[10px] font-bold bg-rose-600 text-white rounded-full"
-                      >
-                        {unreadCount > 99 ? '99+' : unreadCount}
-                      </span>
-                    )}
-                  </button>
+            <div className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 bg-slate-50/90 text-[11px]">
+              <Server
+                className={`w-3.5 h-3.5 ${backendReachable ? 'text-emerald-600' : 'text-rose-500'}`}
+              />
+              <span className="font-medium text-slate-600">API</span>
+              <span className="text-slate-300">|</span>
+              <Database
+                className={`w-3.5 h-3.5 ${databaseReady ? 'text-emerald-600' : 'text-amber-500'}`}
+              />
+              <span className="font-medium text-slate-600">PG</span>
+            </div>
 
-                  {notificationsOpen && (
-                    <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl border border-slate-200 shadow-lg z-50 overflow-hidden">
-                      <div className="px-3.5 py-2.5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-                        <span className="text-xs font-semibold text-slate-800">
-                          Notifications ({unreadCount} unread)
-                        </span>
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={isLoading}
+              aria-label="Refresh system status"
+              title="Refresh system status"
+              className="p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+            </button>
+
+            {isAuthenticated && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setNotificationsOpen((prev) => !prev)}
+                  aria-label="Notifications"
+                  className="relative p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors"
+                >
+                  <Bell className="w-4 h-4" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 px-1.5 min-w-[16px] h-4 rounded-full bg-indigo-600 text-white text-[10px] font-bold flex items-center justify-center shadow-xs">
+                      {unreadCount}
+                    </span>
+                  )}
+                </button>
+
+                {notificationsOpen && (
+                  <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-2xl bg-white border border-slate-200 shadow-glass z-50 overflow-hidden animate-slideUp">
+                    <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+                      <span className="text-xs font-semibold text-slate-800">
+                        Notifications ({unreadCount} unread)
+                      </span>
+                      <div className="flex items-center gap-2.5">
                         {unreadCount > 0 && (
                           <button
                             type="button"
-                            onClick={() => void handleMarkAllRead()}
-                            className="inline-flex items-center space-x-1 text-[11px] font-medium text-emerald-700 hover:text-emerald-800"
+                            onClick={handleMarkAllRead}
+                            className="inline-flex items-center gap-1 text-[11px] font-medium text-indigo-600 hover:text-indigo-800"
                           >
                             <CheckCheck className="w-3.5 h-3.5" />
                             <span>Mark all read</span>
                           </button>
                         )}
                       </div>
-                      <div className="max-h-72 overflow-y-auto divide-y divide-slate-100">
-                        {notifications.length === 0 ? (
-                          <div className="p-4 text-xs text-slate-500 text-center">
-                            No notifications yet.
-                          </div>
-                        ) : (
-                          notifications.map((n) => (
-                            <div
-                              key={n.id}
-                              onClick={() => {
-                                if (!n.is_read) void handleMarkNotificationRead(n.id);
-                                setNotificationsOpen(false);
-                                if (n.related_subscription_id) {
-                                  onNavigate('subscriptions');
-                                } else if (n.related_loan_id) {
-                                  onNavigate('loans');
-                                } else {
-                                  onNavigate('bills');
-                                }
-                              }}
-                              className={`p-3 cursor-pointer hover:bg-slate-50 transition-colors ${
-                                n.is_read ? 'bg-white' : 'bg-emerald-50/40'
-                              }`}
-                            >
-                              <div className="flex items-start justify-between gap-2">
-                                <p className="text-xs font-semibold text-slate-900">{n.title}</p>
-                                {!n.is_read && (
-                                  <span className="w-2 h-2 mt-1 rounded-full bg-emerald-600 flex-shrink-0" />
-                                )}
-                              </div>
-                              <p className="text-[11px] text-slate-600 mt-0.5 line-clamp-2">
-                                {n.message}
-                              </p>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                      <div className="px-3.5 py-2 border-t border-slate-100 bg-slate-50 text-center">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setNotificationsOpen(false);
-                            onNavigate('bills');
-                          }}
-                          className="text-xs font-medium text-emerald-700 hover:text-emerald-800"
-                        >
-                          Open Bills & Notifications
-                        </button>
-                      </div>
                     </div>
-                  )}
-                </div>
 
+                    <div className="max-h-72 overflow-y-auto divide-y divide-slate-100">
+                      {notifications.length === 0 ? (
+                        <div className="p-6 text-center text-xs text-slate-500">
+                          No notifications yet. Upcoming bill, subscription, and EMI reminders will appear here.
+                        </div>
+                      ) : (
+                        notifications.map((n) => (
+                          <div
+                            key={n.id}
+                            className={`px-4 py-3 text-xs transition-colors ${
+                              n.is_read ? 'bg-white' : 'bg-indigo-50/45'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="font-semibold text-slate-900">{n.title}</p>
+                              {!n.is_read && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleMarkNotificationRead(n.id)}
+                                  className="text-[10px] text-indigo-600 hover:underline shrink-0"
+                                >
+                                  Read
+                                </button>
+                              )}
+                            </div>
+                            <p className="text-slate-600 mt-0.5 leading-snug">{n.message}</p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    <div className="px-4 py-2.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNotificationsOpen(false);
+                          onNavigate('reminders');
+                        }}
+                        className="text-xs font-semibold text-indigo-600 hover:text-indigo-800"
+                      >
+                        Open Reminders & Notifications →
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setNotificationsOpen(false)}
+                        className="text-xs text-slate-500 hover:text-slate-700"
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {isAuthenticated && user ? (
+              <div className="relative">
                 <button
                   type="button"
-                  onClick={() => onNavigate('profile')}
-                  className="hidden sm:inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
+                  onClick={() => setUserMenuOpen((prev) => !prev)}
+                  className="flex items-center gap-2 pl-2 pr-2.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-colors"
                 >
-                  <UserIcon className="w-3.5 h-3.5 text-slate-500" />
-                  <span>{user?.full_name?.split(' ')[0] || 'Profile'}</span>
+                  <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-indigo-600 to-violet-600 text-white text-xs font-bold flex items-center justify-center">
+                    {(user.full_name || user.email || 'U').charAt(0).toUpperCase()}
+                  </div>
+                  <span className="hidden md:inline text-xs font-semibold text-slate-800 max-w-[110px] truncate">
+                    {user.full_name?.split(' ')[0] || 'Account'}
+                  </span>
                 </button>
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  className="inline-flex items-center space-x-1 px-3 py-1.5 text-xs font-medium text-rose-600 bg-rose-50 border border-rose-200 rounded-lg hover:bg-rose-100 transition-colors"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Sign Out</span>
-                </button>
+
+                {userMenuOpen && (
+                  <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-white border border-slate-200 shadow-glass py-1.5 z-50 animate-slideUp">
+                    <div className="px-3.5 py-2 border-b border-slate-100">
+                      <p className="text-xs font-semibold text-slate-900 truncate">{user.full_name}</p>
+                      <p className="text-[11px] text-slate-500 truncate">{user.email}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleNavClick('profile')}
+                      className="w-full px-3.5 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                    >
+                      <UserIcon className="w-3.5 h-3.5 text-slate-400" />
+                      <span>My Profile</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleNavClick('preferences')}
+                      className="w-full px-3.5 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                    >
+                      <Sliders className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Regional Preferences</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleNavClick('sessions')}
+                      className="w-full px-3.5 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                    >
+                      <Smartphone className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Active Sessions</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleNavClick('settings')}
+                      className="w-full px-3.5 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                    >
+                      <Settings className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Workspace Settings</span>
+                    </button>
+                    <div className="my-1 border-t border-slate-100" />
+                    <button
+                      type="button"
+                      onClick={handleLogout}
+                      className="w-full px-3.5 py-2 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 flex items-center gap-2"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      <span>Sign Out</span>
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center gap-1.5">
                 <button
                   type="button"
                   onClick={() => onNavigate('login')}
-                  className="inline-flex items-center space-x-1 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-100"
                 >
-                  <LogIn className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Sign In</span>
+                  Login
                 </button>
                 <button
                   type="button"
                   onClick={() => onNavigate('register')}
-                  className="inline-flex items-center space-x-1 px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors shadow-xs"
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs"
                 >
-                  <UserPlus className="w-3.5 h-3.5" />
-                  <span>Register</span>
+                  Get Started
                 </button>
               </div>
             )}
           </div>
         </header>
 
-        {/* Unverified Email Warning Banner */}
-        {isAuthenticated && user && !user.is_email_verified && (
-          <div className="bg-amber-50 border-b border-amber-200 px-4 sm:px-8 py-2.5 text-xs text-amber-900 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-            <div className="flex items-center space-x-2">
-              <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
-              <span>
-                <strong>Action Recommended:</strong> Your email ({user.email}) is unverified.
-                Check your inbox for the activation link.
-              </span>
-            </div>
-            <div className="flex items-center space-x-3">
-              {resendStatus && <span className="text-[11px] text-amber-800">{resendStatus}</span>}
-              <button
-                type="button"
-                onClick={handleResendVerification}
-                disabled={isResending}
-                className="font-medium text-amber-800 hover:text-amber-950 underline disabled:opacity-50 text-[11px]"
-              >
-                {isResending ? 'Sending...' : 'Resend Email'}
-              </button>
-              <button
-                type="button"
-                onClick={() => onNavigate('verify-email')}
-                className="px-2.5 py-1 bg-amber-200 hover:bg-amber-300 text-amber-900 rounded font-medium text-[11px] transition-colors"
-              >
-                Enter Token
-              </button>
-            </div>
+        {/* Contextual Verification & Onboarding Banners */}
+        {isAuthenticated && user && (!user.is_email_verified || !user.onboarding_completed) && (
+          <div className="px-4 sm:px-6 lg:px-8 pt-4 space-y-2 max-w-[1440px] w-full mx-auto">
+            {!user.is_email_verified && (
+              <div className="bg-amber-50/95 border border-amber-200/90 rounded-xl px-4 py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2 text-amber-900">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>
+                    Email address <strong>{user.email}</strong> is unverified.{' '}
+                    {resendStatus && <strong className="ml-1 underline">{resendStatus}</strong>}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleResendVerification}
+                    disabled={isResending}
+                    className="px-2.5 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 font-semibold transition-colors"
+                  >
+                    {isResending ? 'Sending...' : 'Resend Link'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('verify-email')}
+                    className="px-2.5 py-1 rounded-lg bg-white border border-amber-300 text-amber-900 font-semibold hover:bg-amber-50"
+                  >
+                    Verify Email
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!user.onboarding_completed && currentView !== 'onboarding' && (
+              <div className="bg-indigo-50/90 border border-indigo-200 rounded-xl px-4 py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2 text-indigo-900">
+                  <Sparkles className="w-4 h-4 text-indigo-600 shrink-0" />
+                  <span>
+                    Complete your onboarding setup (INR, timezone, and optional account import) to personalize your workspace.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onNavigate('onboarding')}
+                  className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 shrink-0"
+                >
+                  <span>Resume Onboarding</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
           </div>
         )}
 
-        {/* Incomplete Onboarding Banner */}
-        {isAuthenticated && user && !user.onboarding_completed && currentView !== 'onboarding' && (
-          <div className="bg-emerald-50 border-b border-emerald-200 px-4 sm:px-8 py-2.5 text-xs text-emerald-900 flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <Sparkles className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-              <span>Complete your account personalization for an optimized India-first setup.</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => onNavigate('onboarding')}
-              className="inline-flex items-center space-x-1 font-semibold text-emerald-700 hover:text-emerald-900 text-xs"
-            >
-              <span>Resume Setup</span>
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        )}
-
-        {/* Page Content */}
-        <main className="flex-1 p-4 sm:p-8 max-w-7xl w-full mx-auto">{children}</main>
+        {/* Main Content Viewport */}
+        <main className="flex-1 px-4 sm:px-6 lg:px-8 py-6">
+          <div className="max-w-[1440px] mx-auto animate-fadeIn">{children}</div>
+        </main>
       </div>
     </div>
   );

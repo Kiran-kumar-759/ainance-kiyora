@@ -1,35 +1,84 @@
-import React, { useState, useEffect } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from '../context/AuthContext';
 import { AppShell } from '../layouts/AppShell';
-import { SystemStatusView } from '../features/status/SystemStatusView';
 import { useSystemStatus } from '../hooks/useSystemStatus';
+import { ToastProvider } from '../components/ui/ToastProvider';
+import { SkeletonCard } from '../components/ui/Primitives';
+import { LandingPage } from '../pages/landing/LandingPage';
 import { LoginPage } from '../pages/auth/LoginPage';
 import { RegisterPage } from '../pages/auth/RegisterPage';
 import { ForgotPasswordPage } from '../pages/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from '../pages/auth/ResetPasswordPage';
 import { VerifyEmailPage } from '../pages/auth/VerifyEmailPage';
-import { OnboardingWizard } from '../pages/onboarding/OnboardingWizard';
-import { ProfilePage } from '../pages/profile/ProfilePage';
-import { PreferencesPage } from '../pages/settings/PreferencesPage';
-import { SessionsPage } from '../pages/settings/SessionsPage';
-import { DashboardPage } from '../pages/finance/DashboardPage';
-import { AccountsPage } from '../pages/finance/AccountsPage';
-import { TransactionsPage } from '../pages/finance/TransactionsPage';
-import { TransfersPage } from '../pages/finance/TransfersPage';
-import { BankingPage } from '../pages/banking/BankingPage';
-import { ImportsPage } from '../pages/imports/ImportsPage';
-import { AnalyticsPage } from '../pages/analytics/AnalyticsPage';
-import { ReportsPage } from '../pages/reports/ReportsPage';
-import { BillsPage } from '../pages/bills/BillsPage';
-import { SubscriptionsPage } from '../pages/subscriptions/SubscriptionsPage';
-import { LoansPage } from '../pages/loans/LoansPage';
-import { DocumentsPage } from '../pages/documents/DocumentsPage';
-import { IntegrationsPage } from '../pages/integrations/IntegrationsPage';
-import { IntelligencePage } from '../pages/intelligence/IntelligencePage';
-import { ForecastingPage } from '../pages/forecasting/ForecastingPage';
-import { AssistantPage } from '../pages/assistant/AssistantPage';
-import { SettingsPage } from '../pages/settings/SettingsPage';
 import { TransactionNavigationFilters } from '../types/analytics';
+
+// Lazy-load rich workspace modules so initial public bundle stays lean
+const DashboardPage = lazy(() =>
+  import('../pages/finance/DashboardPage').then((m) => ({ default: m.DashboardPage }))
+);
+const OnboardingWizard = lazy(() =>
+  import('../pages/onboarding/OnboardingWizard').then((m) => ({ default: m.OnboardingWizard }))
+);
+const ProfilePage = lazy(() =>
+  import('../pages/profile/ProfilePage').then((m) => ({ default: m.ProfilePage }))
+);
+const PreferencesPage = lazy(() =>
+  import('../pages/settings/PreferencesPage').then((m) => ({ default: m.PreferencesPage }))
+);
+const SessionsPage = lazy(() =>
+  import('../pages/settings/SessionsPage').then((m) => ({ default: m.SessionsPage }))
+);
+const AccountsPage = lazy(() =>
+  import('../pages/finance/AccountsPage').then((m) => ({ default: m.AccountsPage }))
+);
+const TransactionsPage = lazy(() =>
+  import('../pages/finance/TransactionsPage').then((m) => ({ default: m.TransactionsPage }))
+);
+const TransfersPage = lazy(() =>
+  import('../pages/finance/TransfersPage').then((m) => ({ default: m.TransfersPage }))
+);
+const BankingPage = lazy(() =>
+  import('../pages/banking/BankingPage').then((m) => ({ default: m.BankingPage }))
+);
+const ImportsPage = lazy(() =>
+  import('../pages/imports/ImportsPage').then((m) => ({ default: m.ImportsPage }))
+);
+const AnalyticsPage = lazy(() =>
+  import('../pages/analytics/AnalyticsPage').then((m) => ({ default: m.AnalyticsPage }))
+);
+const ReportsPage = lazy(() =>
+  import('../pages/reports/ReportsPage').then((m) => ({ default: m.ReportsPage }))
+);
+const BillsPage = lazy(() =>
+  import('../pages/bills/BillsPage').then((m) => ({ default: m.BillsPage }))
+);
+const SubscriptionsPage = lazy(() =>
+  import('../pages/subscriptions/SubscriptionsPage').then((m) => ({ default: m.SubscriptionsPage }))
+);
+const LoansPage = lazy(() =>
+  import('../pages/loans/LoansPage').then((m) => ({ default: m.LoansPage }))
+);
+const RemindersPage = lazy(() =>
+  import('../pages/reminders/RemindersPage').then((m) => ({ default: m.RemindersPage }))
+);
+const DocumentsPage = lazy(() =>
+  import('../pages/documents/DocumentsPage').then((m) => ({ default: m.DocumentsPage }))
+);
+const IntegrationsPage = lazy(() =>
+  import('../pages/integrations/IntegrationsPage').then((m) => ({ default: m.IntegrationsPage }))
+);
+const IntelligencePage = lazy(() =>
+  import('../pages/intelligence/IntelligencePage').then((m) => ({ default: m.IntelligencePage }))
+);
+const ForecastingPage = lazy(() =>
+  import('../pages/forecasting/ForecastingPage').then((m) => ({ default: m.ForecastingPage }))
+);
+const AssistantPage = lazy(() =>
+  import('../pages/assistant/AssistantPage').then((m) => ({ default: m.AssistantPage }))
+);
+const SettingsPage = lazy(() =>
+  import('../pages/settings/SettingsPage').then((m) => ({ default: m.SettingsPage }))
+);
 
 const PROTECTED_VIEWS = new Set([
   'dashboard',
@@ -43,6 +92,7 @@ const PROTECTED_VIEWS = new Set([
   'bills',
   'subscriptions',
   'loans',
+  'reminders',
   'documents',
   'integrations',
   'intelligence',
@@ -55,6 +105,27 @@ const PROTECTED_VIEWS = new Set([
   'onboarding',
 ]);
 
+const PUBLIC_STANDALONE_VIEWS = new Set([
+  'foundation',
+  'login',
+  'register',
+  'forgot-password',
+  'reset-password',
+  'verify-email',
+]);
+
+const ViewLoader: React.FC = () => (
+  <div className="space-y-4 py-2">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <SkeletonCard rows={2} />
+      <SkeletonCard rows={2} />
+      <SkeletonCard rows={2} />
+      <SkeletonCard rows={2} />
+    </div>
+    <SkeletonCard rows={4} />
+  </div>
+);
+
 const AppContent: React.FC = () => {
   const {
     health,
@@ -64,7 +135,6 @@ const AppContent: React.FC = () => {
     error: statusError,
     backendReachable,
     databaseReady,
-    lastChecked,
     refresh,
   } = useSystemStatus();
 
@@ -73,13 +143,17 @@ const AppContent: React.FC = () => {
   const [tokenParam, setTokenParam] = useState<string>('');
   const [txFilters, setTxFilters] = useState<TransactionNavigationFilters | null>(null);
 
-  // When user becomes authenticated and is on foundation, steer to configured landing view
+  // When authenticated on login/register/initial load, route to onboarding (if incomplete) or landing view
   useEffect(() => {
-    if (isAuthenticated && currentView === 'foundation') {
-      const landing = preferences?.notification_preferences?.default_landing_view || 'dashboard';
-      setCurrentView(String(landing));
+    if (isAuthenticated && (currentView === 'foundation' || currentView === 'login' || currentView === 'register')) {
+      if (user && user.onboarding_completed === false) {
+        setCurrentView('onboarding');
+      } else {
+        const landing = preferences?.notification_preferences?.default_landing_view || 'dashboard';
+        setCurrentView(String(landing));
+      }
     }
-  }, [isAuthenticated, currentView, preferences]);
+  }, [isAuthenticated, currentView, preferences, user]);
 
   // If session expires or user logs out while on a protected view, steer gracefully to login
   useEffect(() => {
@@ -117,70 +191,57 @@ const AppContent: React.FC = () => {
     switch (currentView) {
       case 'dashboard':
         return <DashboardPage onNavigate={handleNavigate} userName={user?.full_name} />;
-
       case 'accounts':
         return <AccountsPage onNavigate={handleNavigate} />;
-
       case 'transactions':
         return <TransactionsPage onNavigate={handleNavigate} initialFilters={txFilters} />;
-
       case 'transfers':
         return <TransfersPage onNavigate={handleNavigate} />;
-
       case 'banking':
         return <BankingPage onNavigate={handleNavigate} />;
-
       case 'imports':
         return <ImportsPage onNavigate={handleNavigate} />;
-
       case 'analytics':
         return <AnalyticsPage onNavigate={handleNavigate} />;
-
       case 'reports':
         return <ReportsPage onNavigate={handleNavigate} />;
-
       case 'bills':
         return <BillsPage onNavigate={handleNavigate} />;
-
       case 'subscriptions':
         return <SubscriptionsPage onNavigate={handleNavigate} />;
-
       case 'loans':
         return <LoansPage onNavigate={handleNavigate} />;
-
+      case 'reminders':
+        return <RemindersPage onNavigate={handleNavigate} />;
       case 'documents':
         return <DocumentsPage onNavigate={handleNavigate} />;
-
       case 'integrations':
         return <IntegrationsPage onNavigate={handleNavigate} />;
-
       case 'intelligence':
         return <IntelligencePage onNavigate={handleNavigate} />;
-
       case 'forecasting':
         return <ForecastingPage onNavigate={handleNavigate} />;
-
       case 'assistant':
         return <AssistantPage onNavigate={handleNavigate} />;
-
       case 'settings':
         return <SettingsPage onNavigate={handleNavigate} />;
-
       case 'login':
-        return <LoginPage onNavigate={handleNavigate} />;
-
+        return (
+          <LoginPage
+            onNavigate={handleNavigate}
+            onSuccess={() =>
+              setCurrentView(user && user.onboarding_completed === false ? 'onboarding' : 'dashboard')
+            }
+          />
+        );
       case 'register':
         return <RegisterPage onNavigate={handleNavigate} />;
-
       case 'forgot-password':
         return <ForgotPasswordPage onNavigate={handleNavigate} />;
-
       case 'reset-password':
         return <ResetPasswordPage token={tokenParam} onNavigate={handleNavigate} />;
-
       case 'verify-email':
         return <VerifyEmailPage token={tokenParam} onNavigate={handleNavigate} />;
-
       case 'onboarding':
         return (
           <OnboardingWizard
@@ -189,33 +250,37 @@ const AppContent: React.FC = () => {
             }}
           />
         );
-
       case 'profile':
         return <ProfilePage onNavigate={handleNavigate} />;
-
       case 'preferences':
         return <PreferencesPage onNavigate={handleNavigate} />;
-
       case 'sessions':
         return <SessionsPage onNavigate={handleNavigate} />;
-
       case 'foundation':
       default:
         return (
-          <SystemStatusView
+          <LandingPage
             health={health}
             readiness={readiness}
             platform={platform}
             isLoading={statusLoading}
             error={statusError}
-            backendReachable={backendReachable}
-            databaseReady={databaseReady}
-            lastChecked={lastChecked}
             onRefresh={refresh}
+            onNavigate={handleNavigate}
+            isAuthenticated={isAuthenticated}
           />
         );
     }
   };
+
+  // Full-bleed Landing and Standalone Auth Screens without AppShell chrome
+  if (PUBLIC_STANDALONE_VIEWS.has(currentView)) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        {renderContent()}
+      </div>
+    );
+  }
 
   return (
     <AppShell
@@ -226,16 +291,18 @@ const AppContent: React.FC = () => {
       currentView={currentView}
       onNavigate={handleNavigate}
     >
-      {renderContent()}
+      <Suspense fallback={<ViewLoader />}>{renderContent()}</Suspense>
     </AppShell>
   );
 };
 
 export const App: React.FC = () => {
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <ToastProvider>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </ToastProvider>
   );
 };
 

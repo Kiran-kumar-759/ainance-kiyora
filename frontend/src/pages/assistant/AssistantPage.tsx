@@ -1587,10 +1587,10 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
   return (
     <div className="space-y-4">
       {/* Header & Controls Bar */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+      <div className="glass-panel rounded-2xl border border-indigo-200/80 p-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
           <div className="flex items-center space-x-2">
-            <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center text-white shadow-xs">
               <Bot className="w-5 h-5" />
             </div>
             <div>

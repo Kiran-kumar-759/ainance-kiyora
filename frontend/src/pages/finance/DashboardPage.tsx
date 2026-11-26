@@ -16,15 +16,24 @@ import {
   BarChart3,
   FileText,
   Info,
+  Sparkles,
+  CalendarClock,
+  BellRing,
+  Bot,
+  ArrowRight,
+  Upload,
 } from 'lucide-react';
 import { financeApi } from '../../services/financeApi';
 import { analyticsApi } from '../../services/analyticsApi';
+import { billsApi } from '../../services/billsApi';
+import { loansApi, subscriptionsApi } from '../../services/phase6Api';
 import { FinancialDashboard } from '../../types/finance';
 import {
   AnalyticsDashboard,
   TransactionNavigationFilters,
 } from '../../types/analytics';
 import { formatINR, formatDate } from '../../lib/formatters';
+import { Skeleton } from '../../components/ui/Primitives';
 import {
   CategoryDonutChart,
   IncomeVsExpenseBarChart,
@@ -113,6 +122,50 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, userNa
   const [data, setData] = useState<AnalyticsDashboard | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [commitments, setCommitments] = useState<{
+    billsDue: number;
+    subsDue: number;
+    emiCommitment: string | number;
+    unreadAlerts: number;
+  } | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadCommitments = async () => {
+      try {
+        const [billsRes, subsRes, loansRes, notifRes] = await Promise.allSettled([
+          billsApi.getOverview(),
+          subscriptionsApi.getOverview(),
+          loansApi.getOverview(),
+          billsApi.getUnreadCount(),
+        ]);
+        if (!mounted) return;
+        const billsDue =
+          billsRes.status === 'fulfilled'
+            ? (billsRes.value.upcoming_count ?? 0) + (billsRes.value.overdue_count ?? 0)
+            : 0;
+        const subsDue =
+          subsRes.status === 'fulfilled' ? subsRes.value.renewals_due_soon_count ?? 0 : 0;
+        const emiCommitment =
+          loansRes.status === 'fulfilled' ? loansRes.value.total_monthly_emi_commitment ?? 0 : 0;
+        const unreadAlerts =
+          notifRes.status === 'fulfilled' ? notifRes.value.unread_count ?? 0 : 0;
+        if (
+          billsRes.status === 'fulfilled' ||
+          subsRes.status === 'fulfilled' ||
+          loansRes.status === 'fulfilled'
+        ) {
+          setCommitments({ billsDue, subsDue, emiCommitment, unreadAlerts });
+        }
+      } catch {
+        // Non-blocking secondary summary
+      }
+    };
+    void loadCommitments();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const fetchDashboard = async (
     selectedPeriod: string,
@@ -270,28 +323,98 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, userNa
         </div>
       )}
 
+      {/* Getting Started Checklist for Empty New Workspaces */}
+      {data && !isLoading && data.account_count === 0 && (
+        <div className="rounded-2xl glass-accent p-5 sm:p-6 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div>
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-indigo-700">
+                <Sparkles className="w-3.5 h-3.5" />
+                Getting Started Checklist
+              </span>
+              <h2 className="text-base font-bold text-slate-900 mt-0.5">
+                Populate your workspace with your real financial records
+              </h2>
+            </div>
+            <button
+              type="button"
+              onClick={() => onNavigate('assistant')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 self-start"
+            >
+              <Bot className="w-3.5 h-3.5" />
+              <span>Ask AI Copilot</span>
+            </button>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {[
+              {
+                title: '1. Add Bank Account',
+                desc: 'Set opening balance & separate credit cards',
+                view: 'accounts',
+                icon: Landmark,
+              },
+              {
+                title: '2. Upload Statement',
+                desc: 'Import HDFC/ICICI/SBI CSV or XLSX',
+                view: 'imports',
+                icon: Upload,
+              },
+              {
+                title: '3. Track Bills & OTT',
+                desc: 'Add recurring bills, subscriptions & EMIs',
+                view: 'bills',
+                icon: CalendarClock,
+              },
+              {
+                title: '4. Configure Alerts',
+                desc: 'Manage due reminders & email sync',
+                view: 'reminders',
+                icon: BellRing,
+              },
+            ].map((step) => {
+              const StepIcon = step.icon;
+              return (
+                <button
+                  key={step.title}
+                  type="button"
+                  onClick={() => onNavigate(step.view)}
+                  className="text-left rounded-xl bg-white/90 border border-indigo-200/70 p-3.5 hover:border-indigo-400 hover:shadow-card transition-all"
+                >
+                  <div className="flex items-center justify-between text-indigo-600">
+                    <StepIcon className="w-4 h-4" />
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </div>
+                  <p className="text-xs font-bold text-slate-900 mt-2">{step.title}</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">{step.desc}</p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Balance Sheet Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+        <div className="glass-panel rounded-2xl border border-indigo-200/80 p-5">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
               Net Financial Position
             </span>
-            <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
               <PiggyBank className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3">
-            <div className="text-2xl font-bold text-gray-900">
-              {isLoading ? '...' : formatINR(data?.net_financial_position)}
+            <div className="text-2xl font-bold text-slate-900 tabular-nums">
+              {isLoading ? <Skeleton className="h-7 w-32" /> : formatINR(data?.net_financial_position)}
             </div>
-            <p className="text-xs text-gray-500 mt-1">Total Assets minus Credit Card Debt</p>
+            <p className="text-xs text-slate-500 mt-1">Total Assets minus Credit Card Debt</p>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
               Total Assets
             </span>
             <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
@@ -299,16 +422,16 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, userNa
             </div>
           </div>
           <div className="mt-3">
-            <div className="text-2xl font-bold text-emerald-600">
-              {isLoading ? '...' : formatINR(data?.total_assets)}
+            <div className="text-2xl font-bold text-emerald-600 tabular-nums">
+              {isLoading ? <Skeleton className="h-7 w-32" /> : formatINR(data?.total_assets)}
             </div>
-            <p className="text-xs text-gray-500 mt-1">Savings, Current, Cash &amp; Wallets</p>
+            <p className="text-xs text-slate-500 mt-1">Savings, Current, Cash &amp; Wallets</p>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
               Credit Card Outstanding
             </span>
             <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
@@ -316,36 +439,92 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, userNa
             </div>
           </div>
           <div className="mt-3">
-            <div className="text-2xl font-bold text-rose-600">
-              {isLoading ? '...' : formatINR(data?.total_liabilities)}
+            <div className="text-2xl font-bold text-rose-600 tabular-nums">
+              {isLoading ? <Skeleton className="h-7 w-32" /> : formatINR(data?.total_liabilities)}
             </div>
-            <p className="text-xs text-gray-500 mt-1">Total outstanding card liability</p>
+            <p className="text-xs text-slate-500 mt-1">Total outstanding card liability</p>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-card">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
               Active Accounts
             </span>
-            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center">
               <Landmark className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3">
-            <div className="text-2xl font-bold text-gray-900">
-              {isLoading ? '...' : data?.account_count ?? 0}
+            <div className="text-2xl font-bold text-slate-900 tabular-nums">
+              {isLoading ? <Skeleton className="h-7 w-16" /> : data?.account_count ?? 0}
             </div>
             <button
               type="button"
               onClick={() => onNavigate('accounts')}
-              className="text-xs text-blue-600 hover:text-blue-800 font-medium mt-1"
+              className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold mt-1"
             >
               Manage Accounts &rarr;
             </button>
           </div>
         </div>
       </div>
+
+      {/* Upcoming Commitments & Quick Actions Strip */}
+      {commitments && (
+        <div className="rounded-2xl bg-white border border-slate-200/80 p-4 sm:p-5 shadow-card flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-4 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="p-2 rounded-lg bg-indigo-50 text-indigo-600">
+                <CalendarClock className="w-4 h-4" />
+              </span>
+              <div>
+                <p className="text-slate-500">Bills Due / Overdue</p>
+                <p className="font-bold text-slate-900">{commitments.billsDue} pending</p>
+              </div>
+            </div>
+            <div className="h-7 w-px bg-slate-200 hidden sm:block" />
+            <div>
+              <p className="text-slate-500">OTT Renewals Soon</p>
+              <p className="font-bold text-slate-900">{commitments.subsDue} upcoming</p>
+            </div>
+            <div className="h-7 w-px bg-slate-200 hidden sm:block" />
+            <div>
+              <p className="text-slate-500">Monthly EMI Commitment</p>
+              <p className="font-bold text-slate-900 tabular-nums">
+                {formatINR(commitments.emiCommitment)}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onNavigate('reminders')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold transition-colors"
+            >
+              <BellRing className="w-3.5 h-3.5" />
+              <span>
+                Reminders{commitments.unreadAlerts > 0 ? ` (${commitments.unreadAlerts})` : ''}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigate('forecasting')}
+              className="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold"
+            >
+              Forecast &rarr;
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigate('assistant')}
+              className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold"
+            >
+              Ask AI
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Period Cash Flow Strip + Period-over-Period Comparisons */}
       <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">

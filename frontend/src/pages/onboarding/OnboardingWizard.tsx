@@ -153,7 +153,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
         <div className="flex items-center justify-between relative">
           <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-slate-200 -translate-y-1/2 z-0" />
           <div
-            className="absolute top-1/2 left-0 h-0.5 bg-emerald-500 -translate-y-1/2 z-0 transition-all duration-300"
+            className="absolute top-1/2 left-0 h-0.5 bg-indigo-600 -translate-y-1/2 z-0 transition-all duration-300"
             style={{ width: `${((currentStep - 1) / (steps.length - 1)) * 100}%` }}
           />
 
@@ -167,9 +167,9 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
                 <div
                   className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold border-2 transition-colors ${
                     isDone
-                      ? 'bg-emerald-600 border-emerald-600 text-white'
+                      ? 'bg-indigo-600 border-indigo-600 text-white'
                       : isCurrent
-                      ? 'bg-white border-emerald-600 text-emerald-600 shadow-sm'
+                      ? 'bg-white border-indigo-600 text-indigo-600 shadow-sm'
                       : 'bg-white border-slate-300 text-slate-400'
                   }`}
                 >
@@ -177,7 +177,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
                 </div>
                 <span
                   className={`text-[11px] font-medium mt-1.5 hidden sm:block ${
-                    isCurrent ? 'text-emerald-700 font-semibold' : 'text-slate-500'
+                    isCurrent ? 'text-indigo-700 font-semibold' : 'text-slate-500'
                   }`}
                 >
                   {s.title}
@@ -446,7 +446,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }
               type="button"
               onClick={handleNext}
               disabled={isSubmitting}
-              className="inline-flex items-center space-x-1.5 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold transition-colors shadow-sm"
+              className="inline-flex items-center space-x-1.5 px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 disabled:opacity-50 text-white rounded-xl text-xs font-semibold transition-all shadow-sm"
             >
               <span>{currentStep === 5 ? 'Get Started' : 'Continue'}</span>
               <ArrowRight className="w-3.5 h-3.5" />

@@ -38,7 +38,7 @@ interface LoansPageProps {
 
 type LoanTab = 'loans' | 'payments' | 'calculator' | 'analytics';
 
-export const LoansPage: React.FC<LoansPageProps> = () => {
+export const LoansPage: React.FC<LoansPageProps> = ({ onNavigate }) => {
   const [tab, setTab] = useState<LoanTab>('loans');
   const [overview, setOverview] = useState<LoanOverview | null>(null);
   const [loans, setLoans] = useState<Loan[]>([]);
@@ -159,8 +159,15 @@ export const LoansPage: React.FC<LoansPageProps> = () => {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
+            onClick={() => onNavigate('reminders')}
+            className="inline-flex items-center space-x-1.5 px-3 py-2 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-semibold transition-colors"
+          >
+            <span>Reminders &amp; Logs &rarr;</span>
+          </button>
+          <button
+            type="button"
             onClick={handleRunReminders}
-            className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-lg text-xs font-semibold shadow-sm"
+            className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-semibold shadow-sm"
           >
             <Bell className="w-4 h-4 text-indigo-600" />
             <span>Run EMI Reminders</span>
@@ -171,7 +178,7 @@ export const LoansPage: React.FC<LoansPageProps> = () => {
               setEditingLoan(null);
               setFormOpen(true);
             }}
-            className="inline-flex items-center space-x-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium shadow-sm"
+            className="inline-flex items-center space-x-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium shadow-sm transition-colors"
           >
             <Plus className="w-4 h-4" />
             <span>Add Loan</span>

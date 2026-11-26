@@ -3,32 +3,32 @@ import React from 'react';
 interface CardProps {
   title?: string;
   subtitle?: string;
-  action?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
+  headerAction?: React.ReactNode;
 }
 
 export const Card: React.FC<CardProps> = ({
   title,
   subtitle,
-  action,
   children,
   className = '',
+  headerAction,
 }) => {
   return (
     <div
-      className={`bg-white rounded-xl border border-slate-200/80 shadow-xs hover:border-slate-300 transition-all duration-150 p-6 ${className}`}
+      className={`bg-white rounded-xl border border-slate-200/80 shadow-card hover:shadow-elevated/60 transition-shadow duration-200 overflow-hidden ${className}`}
     >
-      {(title || action) && (
-        <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
-          <div>
-            {title && <h3 className="text-base font-semibold text-slate-900">{title}</h3>}
-            {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
+      {(title || headerAction) && (
+        <div className="px-5 py-4 border-b border-slate-100/90 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            {title && <h3 className="text-sm font-semibold text-slate-900 truncate">{title}</h3>}
+            {subtitle && <p className="text-xs text-slate-500 mt-0.5 truncate">{subtitle}</p>}
           </div>
-          {action && <div>{action}</div>}
+          {headerAction && <div className="shrink-0">{headerAction}</div>}
         </div>
       )}
-      {children}
+      <div className="p-5">{children}</div>
     </div>
   );
 };
