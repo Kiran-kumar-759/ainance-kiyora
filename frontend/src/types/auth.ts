@@ -17,12 +17,40 @@ export interface UserPreferences {
   notification_preferences: {
     email_alerts?: boolean;
     bill_reminders?: boolean;
+    subscription_reminders?: boolean;
+    loan_emi_reminders?: boolean;
+    payment_due_reminders?: boolean;
+    financial_insights?: boolean;
+    spending_anomalies?: boolean;
+    forecast_notifications?: boolean;
     monthly_summary?: boolean;
     email_reminders_enabled?: boolean;
     sms_reminders_enabled?: boolean;
     phone_number?: string;
-    [key: string]: string | boolean | undefined;
+    number_format?: string;
+    week_start?: 'monday' | 'sunday';
+    language?: string;
+    default_landing_view?: 'dashboard' | 'analytics' | 'assistant' | 'bills' | 'transactions';
+    compact_sidebar?: boolean;
+    [key: string]: string | boolean | null | undefined;
   };
+}
+
+export interface PrivacyDataSummary {
+  accounts_count: number;
+  transactions_count: number;
+  bills_count: number;
+  subscriptions_count: number;
+  loans_count: number;
+  documents_count: number;
+  conversations_count: number;
+  forecast_scenarios_count: number;
+  banking_connections_count: number;
+  email_connections_count: number;
+  data_storage_disclosures: string[];
+  export_endpoints: { label: string; endpoint: string; description: string }[];
+  account_deletion_status: string;
+  account_deletion_note: string;
 }
 
 export interface UserSession {

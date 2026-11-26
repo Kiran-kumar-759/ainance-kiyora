@@ -73,7 +73,8 @@ export const AppShell: React.FC<AppShellProps> = ({
   onNavigate,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, preferences, isAuthenticated, logout } = useAuth();
+  const compactSidebar = Boolean(preferences?.notification_preferences?.compact_sidebar);
   const [resendStatus, setResendStatus] = useState<string | null>(null);
   const [isResending, setIsResending] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -302,8 +303,18 @@ export const AppShell: React.FC<AppShellProps> = ({
           view: 'documents',
           active: currentView === 'documents',
         },
-        { name: 'Integrations', icon: Plug, futurePhase: 'Phase 3' },
-        { name: 'Settings', icon: Settings, futurePhase: 'Phase 1 Active' },
+        {
+          name: 'Integrations',
+          icon: Plug,
+          view: 'integrations',
+          active: currentView === 'integrations',
+        },
+        {
+          name: 'Settings',
+          icon: Settings,
+          view: 'settings',
+          active: currentView === 'settings',
+        },
       ],
     },
   ];
@@ -351,7 +362,11 @@ export const AppShell: React.FC<AppShellProps> = ({
       )}
 
       {/* Navigation Sections */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-5 scrollbar-thin">
+      <div
+        className={`flex-1 overflow-y-auto px-4 scrollbar-thin ${
+          compactSidebar ? 'py-2 space-y-3' : 'py-3 space-y-5'
+        }`}
+      >
         {navigationSections.map((section) => (
           <div key={section.title}>
             <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider px-3 mb-1.5">
@@ -428,8 +443,14 @@ export const AppShell: React.FC<AppShellProps> = ({
   return (
     <div className="min-h-screen flex bg-slate-50">
       {/* Desktop Sidebar */}
-      <aside className="hidden lg:block w-72 flex-shrink-0 border-r border-slate-800">
-        <div className="fixed top-0 bottom-0 w-72">{sidebarContent}</div>
+      <aside
+        className={`hidden lg:block flex-shrink-0 border-r border-slate-800 ${
+          compactSidebar ? 'w-60' : 'w-72'
+        }`}
+      >
+        <div className={`fixed top-0 bottom-0 ${compactSidebar ? 'w-60' : 'w-72'}`}>
+          {sidebarContent}
+        </div>
       </aside>
 
       {/* Mobile Drawer */}

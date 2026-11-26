@@ -38,3 +38,20 @@ class UserPreferenceUpdateRequest(BaseModel):
     timezone: str | None = Field(None, max_length=50)
     date_format: str | None = Field(None, max_length=20)
     notification_preferences: dict[str, Any] | None = None
+
+
+class PrivacyDataSummaryResponse(BaseModel):
+    accounts_count: int
+    transactions_count: int
+    bills_count: int
+    subscriptions_count: int
+    loans_count: int
+    documents_count: int
+    conversations_count: int
+    forecast_scenarios_count: int
+    banking_connections_count: int
+    email_connections_count: int
+    data_storage_disclosures: list[str]
+    export_endpoints: list[dict[str, str]]
+    account_deletion_status: str
+    account_deletion_note: str

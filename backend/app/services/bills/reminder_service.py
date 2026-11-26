@@ -40,7 +40,12 @@ class ReminderService:
             dt.time(hour=settings.REMINDER_DEFAULT_HOUR_IST, minute=0),
             tzinfo=tz,
         )
-        return local_dt.astimezone(dt.UTC)
+        scheduled_utc = local_dt.astimezone(dt.UTC)
+        user_today = resolve_user_today(user_timezone)
+        now_utc = dt.datetime.now(dt.UTC)
+        if target_date <= user_today and scheduled_utc > now_utc:
+            return now_utc
+        return scheduled_utc
 
     def _selected_channel_list(self, channels_cfg: dict | None) -> list[str]:
         cfg = channels_cfg or {"in_app": True, "email": False, "sms": False}
@@ -314,6 +319,23 @@ class ReminderService:
             )
 
             scope = getattr(rem, "reminder_scope", "bill") or "bill"
+            user_prefs = (user.preferences.notification_preferences if user and user.preferences else {}) or {}
+            pref_key = {
+                "subscription": "subscription_reminders",
+                "loan_emi": "loan_emi_reminders",
+            }.get(scope, "bill_reminders")
+            if not user_prefs.get(pref_key, True) or not user_prefs.get("payment_due_reminders", True):
+                rem.last_attempt_at = ref_now
+                rem.delivery_status = "unavailable"
+                rem.channel_outcomes = {
+                    "preference": {
+                        "status": "unavailable",
+                        "detail": f"Muted by user setting ({pref_key}); underlying commitment preserved.",
+                    }
+                }
+                db.add(rem)
+                unavailable_count += 1
+                continue
             notif_type: str
             title: str
             body: str

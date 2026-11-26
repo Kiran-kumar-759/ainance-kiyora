@@ -14,6 +14,7 @@ from app.core.security import generate_csrf_token, verify_csrf_token_signature
 from app.models.user import User
 from app.schemas.auth import (
     AuthResponse,
+    ChangePasswordRequest,
     CsrfResponse,
     ForgotPasswordRequest,
     LoginRequest,
@@ -326,3 +327,24 @@ def reset_password(
     return MessageResponse(
         message="Password has been reset successfully. Please log in with your new password."
     )
+
+
+@router.post(
+    "/change-password",
+    response_model=MessageResponse,
+    summary="Change authenticated user's password",
+)
+def change_password(
+    req: ChangePasswordRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    raw_token: str | None = Depends(get_session_token_from_cookie_or_header),
+    _: None = Depends(verify_csrf),
+):
+    """Updates user password after verifying current credentials and optionally revokes other sessions."""
+    revoked = auth_service.change_password(db, current_user, req, current_token=raw_token)
+    if req.revoke_other_sessions:
+        return MessageResponse(
+            message=f"Password updated successfully. Signed out {revoked} other active session(s)."
+        )
+    return MessageResponse(message="Password updated successfully.")

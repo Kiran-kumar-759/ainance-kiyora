@@ -24,9 +24,11 @@ import { BillsPage } from '../pages/bills/BillsPage';
 import { SubscriptionsPage } from '../pages/subscriptions/SubscriptionsPage';
 import { LoansPage } from '../pages/loans/LoansPage';
 import { DocumentsPage } from '../pages/documents/DocumentsPage';
+import { IntegrationsPage } from '../pages/integrations/IntegrationsPage';
 import { IntelligencePage } from '../pages/intelligence/IntelligencePage';
 import { ForecastingPage } from '../pages/forecasting/ForecastingPage';
 import { AssistantPage } from '../pages/assistant/AssistantPage';
+import { SettingsPage } from '../pages/settings/SettingsPage';
 import { TransactionNavigationFilters } from '../types/analytics';
 
 const PROTECTED_VIEWS = new Set([
@@ -42,12 +44,14 @@ const PROTECTED_VIEWS = new Set([
   'subscriptions',
   'loans',
   'documents',
+  'integrations',
   'intelligence',
   'forecasting',
   'assistant',
   'profile',
   'preferences',
   'sessions',
+  'settings',
   'onboarding',
 ]);
 
@@ -64,17 +68,18 @@ const AppContent: React.FC = () => {
     refresh,
   } = useSystemStatus();
 
-  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  const { user, preferences, isAuthenticated, isLoading: authLoading } = useAuth();
   const [currentView, setCurrentView] = useState<string>('foundation');
   const [tokenParam, setTokenParam] = useState<string>('');
   const [txFilters, setTxFilters] = useState<TransactionNavigationFilters | null>(null);
 
-  // When user becomes authenticated and is on foundation, steer to dashboard
+  // When user becomes authenticated and is on foundation, steer to configured landing view
   useEffect(() => {
     if (isAuthenticated && currentView === 'foundation') {
-      setCurrentView('dashboard');
+      const landing = preferences?.notification_preferences?.default_landing_view || 'dashboard';
+      setCurrentView(String(landing));
     }
-  }, [isAuthenticated, currentView]);
+  }, [isAuthenticated, currentView, preferences]);
 
   // If session expires or user logs out while on a protected view, steer gracefully to login
   useEffect(() => {
@@ -146,6 +151,9 @@ const AppContent: React.FC = () => {
       case 'documents':
         return <DocumentsPage onNavigate={handleNavigate} />;
 
+      case 'integrations':
+        return <IntegrationsPage onNavigate={handleNavigate} />;
+
       case 'intelligence':
         return <IntelligencePage onNavigate={handleNavigate} />;
 
@@ -154,6 +162,9 @@ const AppContent: React.FC = () => {
 
       case 'assistant':
         return <AssistantPage onNavigate={handleNavigate} />;
+
+      case 'settings':
+        return <SettingsPage onNavigate={handleNavigate} />;
 
       case 'login':
         return <LoginPage onNavigate={handleNavigate} />;

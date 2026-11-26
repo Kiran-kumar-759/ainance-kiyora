@@ -23,3 +23,12 @@
 - **Production Exposure & Host Controls:** OpenAPI/Swagger/ReDoc endpoints are disabled in `ENVIRONMENT=production`, CORS uses explicit allowlists, `ALLOWED_HOSTS` enables `TrustedHostMiddleware`, and `SECRET_KEY` length/wildcard CORS validation runs at settings startup.
 - **Webhook SSRF Protection:** Outbound SMS notifications validate `SMS_WEBHOOK_URL` against `is_safe_public_url` with `follow_redirects=False`.
 - **Stale Background Job Recovery & Shared Rate Limiting:** `IntelligenceRepository.claim_next_queued_job` recovers stale `processing` AI/forecasting jobs older than 10 minutes (`max_attempts` enforced) before `FOR UPDATE SKIP LOCKED` claiming, and `rate_limiter` supports Valkey shared counters with automatic in-memory fallback.
+
+---
+
+# Pre-Phase 12 Security Controls (Integrations & Settings Centers)
+
+- **Zero Secret Leakage:** Integration overview, provider details, and connectivity tests never expose `GROQ_API_KEY`, `TAVILY_API_KEY`, `LANGSEARCH_API_KEY`, `FIRECRAWL_API_KEY`, `GOOGLE_OAUTH_CLIENT_SECRET`, `SMTP_PASSWORD`, `SMS_API_KEY`, `SMS_WEBHOOK_URL` query secrets, encrypted OAuth tokens, password hashes, or session tokens.
+- **Rate Limits & CSRF on Sensitive Controls:** `POST /api/v1/integrations/providers/{provider_id}/test` (`10/min` per user) and `POST /api/v1/auth/change-password` (`5/min` per user) enforce HttpOnly auth, double-submit `verify_csrf`, and per-user rate limiting.
+- **Cross-Tenant Isolation:** Integration connections (`GET/POST /api/v1/integrations/connections/{id}`) and individual session revocations verify ownership (`404` on foreign IDs).
+- **Safe Disconnection & Account Deletion Boundaries:** Disconnecting Gmail or Demo Bank clears OAuth grants without deleting historical accounts, ledger entries, or documents; self-service destructive account deletion remains deferred cleanly rather than risking incomplete financial cascade removal.

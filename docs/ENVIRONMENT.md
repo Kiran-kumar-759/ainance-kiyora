@@ -58,3 +58,6 @@
 - `ALLOWED_HOSTS=[]` — Optional comma-separated or JSON array of permitted `Host` headers enforced via `TrustedHostMiddleware`.
 - `RATE_LIMIT_USE_VALKEY=true` — Enables shared Valkey (`REDIS_URL`) rate limiting outside `ENVIRONMENT=test`, with automatic thread-safe in-memory fallback when Valkey is unreachable.
 - `ENVIRONMENT=production` enforces `COOKIE_SECURE=true`, rejects wildcard `*` in `CORS_ORIGINS`, enforces `len(SECRET_KEY) >= 32`, and disables `/api/docs`, `/api/redoc`, and `/api/openapi.json`.
+
+## Pre-Phase 12 — Integrations & Settings Runtime Visibility
+- No additional required environment variables were added; Integrations Center safely surfaces server configuration states (`GROQ_ENABLED`, `GROQ_MODEL`, `TAVILY_API_KEY`, `LANGSEARCH_API_KEY`, `FIRECRAWL_API_KEY`, `GOOGLE_OAUTH_CLIENT_ID`, `SMTP_*`, `SMS_*`, `SMS_INGESTION_*`) using variable names and safe telemetry only (never returning credentials, webhook tokens, or SMTP passwords to the browser).

@@ -6,6 +6,7 @@ from app.core.config import settings
 from app.core.security import generate_csrf_token, verify_csrf_token_signature
 from app.models.user import User
 from app.schemas.user import (
+    PrivacyDataSummaryResponse,
     UserPreferenceResponse,
     UserPreferenceUpdateRequest,
     UserResponse,
@@ -76,3 +77,16 @@ def update_user_preferences(
 ):
     """Updates regional and notification preferences for current user."""
     return user_service.update_preferences(db, current_user.id, req)
+
+
+@router.get(
+    "/me/privacy-summary",
+    response_model=PrivacyDataSummaryResponse,
+    summary="Get user-owned data inventory & privacy disclosures",
+)
+def get_privacy_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Returns tenant-scoped record counts, data handling disclosures, and export links."""
+    return user_service.get_privacy_summary(db, current_user)

@@ -169,3 +169,16 @@ All routes require HttpOnly cookie auth (`get_current_user`); `POST`, `PATCH`, a
 - `GET /api/v1/assistant/conversations/{conversation_id}/messages`, `POST /api/v1/assistant/conversations/{conversation_id}/messages` — Lists or appends user turn and generates citation-backed assistant response with `tools_invoked`, `citations`, `evidence_items`, `provider_used`, `llm_model`, and explicit error messages.
 - `POST /api/v1/assistant/rag/reindex` — Synchronizes user-scoped PostgreSQL `document_rag_chunks` with active non-rejected Phase 7 documents.
 - `POST /api/v1/assistant/voice/parse-expense` — Parses spoken financial transcript into an editable `VoiceExpenseDraftResponse` without mutating transactions/ledger.
+
+---
+
+## Pre-Phase 12 — Integrations Center, Password Rotation & User Data Inventory
+All routes require HttpOnly cookie authentication (`get_current_user`); mutations enforce `verify_csrf`.
+
+- `GET /api/v1/integrations/overview` — Returns live configured/connected/unavailable/planned counts, active user connections (no secret keys or tokens), and web provider default.
+- `GET /api/v1/integrations/providers`, `GET /api/v1/integrations/providers/{provider_id}` — Lists/inspects integration provider readiness (`demo_banking`, `account_aggregator`, `gmail`, `sms_outgoing`, `sms_ingestion`, `groq`, `tavily`, `langsearch`, `firecrawl`, `smtp`).
+- `POST /api/v1/integrations/providers/{provider_id}/test` — Rate-limited (`10/min`) live connectivity check for a provider without silent web provider fallback.
+- `GET /api/v1/integrations/connections`, `GET /api/v1/integrations/connections/{connection_id}` — Lists or inspects user-owned Banking & Gmail OAuth connections (`404` on foreign ownership).
+- `POST /api/v1/integrations/connections/{connection_id}/disconnect` — Revokes active Banking or Gmail OAuth connection while preserving verified historical financial data.
+- `POST /api/v1/auth/change-password` — Rate-limited (`5/min`) authenticated Argon2id password change with optional revocation of other active sessions.
+- `GET /api/v1/users/me/privacy-summary` — Returns per-user record counts, storage/AI/OAuth disclosures, CSV export routes, and deferred account deletion disclosure.

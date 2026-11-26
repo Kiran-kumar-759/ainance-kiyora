@@ -20,6 +20,7 @@ from app.repositories.session_repository import SessionRepository
 from app.repositories.token_repository import TokenRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import (
+    ChangePasswordRequest,
     LoginRequest,
     RegisterRequest,
     ResetPasswordRequest,
@@ -394,3 +395,51 @@ class AuthService:
         self.session_repo.revoke_all_for_user(db, user.id)
 
         db.commit()
+
+    def change_password(
+        self,
+        db: Session,
+        user: User,
+        req: ChangePasswordRequest,
+        current_token: str | None = None,
+    ) -> int:
+        """
+        Verifies current password with Argon2id, updates password hash, and
+        optionally revokes all other active sessions cleanly.
+        """
+        rate_key = f"change_pwd:{user.id}"
+        if not rate_limiter.is_allowed(rate_key, max_requests=5, window_seconds=60):
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many password change attempts. Please wait a minute and retry.",
+            )
+
+        if not verify_password(req.current_password, user.password_hash):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Current password is incorrect.",
+            )
+
+        if req.current_password == req.new_password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="New password must be different from your current password.",
+            )
+
+        user.password_hash = hash_password(req.new_password)
+        user.updated_at = datetime.now(UTC)
+
+        revoked_count = 0
+        if req.revoke_other_sessions:
+            except_session_id = None
+            if current_token:
+                current_session = self.session_repo.get_by_token_hash(db, hash_token(current_token))
+                if current_session and current_session.user_id == user.id:
+                    except_session_id = current_session.id
+            revoked_count = self.session_repo.revoke_all_for_user(
+                db, user.id, except_session_id=except_session_id
+            )
+        else:
+            db.commit()
+
+        return revoked_count

@@ -9,6 +9,7 @@ from app.api.routes import (
     email,
     forecasting,
     imports,
+    integrations,
     intelligence,
     loans,
     notifications,
@@ -52,3 +53,4 @@ api_router.include_router(email.router)
 api_router.include_router(intelligence.router)
 api_router.include_router(forecasting.router)
 api_router.include_router(assistant.router)
+api_router.include_router(integrations.router)

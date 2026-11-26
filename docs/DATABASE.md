@@ -644,3 +644,9 @@ Added in Alembic revision **`01139757d108_create_documents_ocr_email_ingestion_.
 - `ai_conversations`: Per-user conversation threads (`id`, `user_id`, `title`, `preferred_provider`, `web_search_enabled`, `is_archived`, `created_at`, `updated_at`) indexed on `(user_id, updated_at)`.
 - `ai_messages`: Ordered message log (`id`, `conversation_id`, `user_id`, `role`, `content`, `provider_used`, `llm_model`, `web_search_used`, JSONB `tools_invoked`, JSONB `citations`, JSONB `evidence_items`, JSONB `draft_action`, `status`, `error_message`, `created_at`) cascading cleanly on conversation delete.
 - `document_rag_chunks`: Tenant-isolated RAG chunks linked via `document_id` (`ON DELETE CASCADE` on `financial_documents.id`) with unique index `uq_rag_doc_content_hash` on `(document_id, content_hash)`, `chunk_index`, optional `page_number`, `source_title`, `is_confirmed_source`, and chunk `content`.
+
+
+## Pre-Phase 12 — Integrations & Settings Persistence Reuse (No New Migration; Head `c87faa90fd29`)
+
+- **Reused Tables:** `users`, `user_sessions`, `user_preferences`, `user_ai_preferences`, `banking_connections`, `banking_sync_runs`, `email_connections`, `email_sync_history`, `ai_processing_jobs`, and `ai_messages`.
+- **`user_preferences.notification_preferences` JSON Extensions:** Normalized merge persistence for granular reminder controls (`bill_reminders`, `subscription_reminders`, `loan_emi_reminders`, `payment_due_reminders`, `financial_insights`, `spending_anomalies`, `forecast_notifications`, `email_alerts`, `email_reminders_enabled`, `sms_reminders_enabled`, `phone_number`, `monthly_summary`), localization options (`number_format`, `week_start`, `language`), and functional UI defaults (`default_landing_view`, `compact_sidebar`) without creating redundant schema tables.

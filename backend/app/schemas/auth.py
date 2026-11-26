@@ -55,6 +55,12 @@ class ResetPasswordRequest(BaseModel):
     new_password: str = Field(..., min_length=8, max_length=128)
 
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(..., min_length=1, max_length=128)
+    new_password: str = Field(..., min_length=8, max_length=128)
+    revoke_other_sessions: bool = True
+
+
 class CsrfResponse(BaseModel):
     csrf_token: str
 

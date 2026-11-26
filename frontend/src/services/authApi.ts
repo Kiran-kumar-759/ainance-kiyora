@@ -3,6 +3,7 @@ import {
   AuthResponse,
   MessageResponse,
   OnboardingStatus,
+  PrivacyDataSummary,
   User,
   UserPreferences,
   UserSession,
@@ -224,7 +225,23 @@ export const authApi = {
       body: JSON.stringify({ token, new_password: newPassword }),
     }),
 
+  changePassword: (
+    currentPassword: string,
+    newPassword: string,
+    revokeOtherSessions: boolean = true
+  ) =>
+    authRequest<MessageResponse>('/api/v1/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({
+        current_password: currentPassword,
+        new_password: newPassword,
+        revoke_other_sessions: revokeOtherSessions,
+      }),
+    }),
+
   getProfile: () => authRequest<User>('/api/v1/users/me'),
+
+  getPrivacySummary: () => authRequest<PrivacyDataSummary>('/api/v1/users/me/privacy-summary'),
 
   updateProfile: (fullName: string) =>
     authRequest<User>('/api/v1/users/me', {
