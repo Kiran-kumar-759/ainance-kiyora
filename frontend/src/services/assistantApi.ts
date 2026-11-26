@@ -188,9 +188,12 @@ export const assistantApi = {
   },
 
   transcribeVoice(audioBlob: Blob): Promise<{ transcript: string; provider: string }> {
-    const ext = audioBlob.type.includes('ogg')
+    const t = (audioBlob.type || '').toLowerCase();
+    const ext = t.includes('wav')
+      ? 'wav'
+      : t.includes('ogg')
       ? 'ogg'
-      : audioBlob.type.includes('mp4')
+      : t.includes('mp4')
       ? 'm4a'
       : 'webm';
     const formData = new FormData();

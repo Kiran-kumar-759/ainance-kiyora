@@ -1,7 +1,9 @@
 import datetime as dt
+import os
 import re
 import shutil
 import subprocess
+import tempfile
 from decimal import Decimal, InvalidOperation
 
 from fastapi import HTTPException, status
@@ -555,6 +557,55 @@ def execute_chat_action_draft(
 _MAX_AUDIO_BYTES = 8 * 1024 * 1024  # 8 MB cap
 
 
+def _normalize_audio_to_wav(audio_bytes: bytes, suffix: str) -> bytes | None:
+    """
+    Convert browser MediaRecorder containers (webm/ogg/mp4/opus) to 16 kHz mono PCM WAV via ffmpeg
+    so Whisper never fails on partial container headers. Returns None cleanly if ffmpeg is unavailable
+    or input bytes are non-audio stubs (e.g. unit test mocks).
+    """
+    ffmpeg_bin = shutil.which("ffmpeg")
+    if not ffmpeg_bin or not audio_bytes:
+        return None
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tf:
+            tf.write(audio_bytes)
+            tmp_path = tf.name
+        proc = subprocess.run(
+            [
+                ffmpeg_bin,
+                "-y",
+                "-v",
+                "error",
+                "-i",
+                tmp_path,
+                "-ar",
+                "16000",
+                "-ac",
+                "1",
+                "-c:a",
+                "pcm_s16le",
+                "-f",
+                "wav",
+                "pipe:1",
+            ],
+            capture_output=True,
+            timeout=12,
+            check=False,
+        )
+        if proc.returncode == 0 and proc.stdout.startswith(b"RIFF") and len(proc.stdout) > 44:
+            return proc.stdout
+    except Exception:
+        return None
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+    return None
+
+
 def transcribe_voice_audio(
     audio_bytes: bytes,
     *,
@@ -562,8 +613,8 @@ def transcribe_voice_audio(
     content_type: str = "audio/webm",
 ) -> tuple[str, str]:
     """
-    Transcribe browser microphone audio using server-side Groq Whisper (`whisper-large-v3-turbo`).
-    Audio stays transient in memory and is never persisted to disk.
+    Transcribe browser microphone audio using server-side Groq Whisper (`whisper-large-v3-turbo`
+    with `whisper-large-v3` fallback). Audio stays transient and is never persisted.
     """
     if not audio_bytes or len(audio_bytes) < 64:
         raise HTTPException(
@@ -588,22 +639,38 @@ def transcribe_voice_audio(
         safe_name = f"{safe_name}.webm"
     mime = (content_type or "audio/webm").split(";")[0].strip()
 
-    try:
-        client = provider._get_client()
-        result = client.audio.transcriptions.create(
-            file=(safe_name, audio_bytes, mime),
-            model="whisper-large-v3-turbo",
-            language="en",
-            temperature=0.0,
-        )
-        transcript = (getattr(result, "text", None) or "").strip()
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Speech transcription failed: {exc}",
-        ) from exc
+    ext = f".{safe_name.rsplit('.', 1)[-1]}"
+    wav_bytes = _normalize_audio_to_wav(audio_bytes, ext) if mime != "audio/wav" else None
+    upload_tuple = (
+        ("recording.wav", wav_bytes, "audio/wav")
+        if wav_bytes is not None
+        else (safe_name, audio_bytes, mime)
+    )
 
-    return transcript, "groq:whisper-large-v3-turbo"
+    last_exc: Exception | None = None
+    client = provider._get_client()
+    for stt_model in ("whisper-large-v3-turbo", "whisper-large-v3"):
+        try:
+            result = client.audio.transcriptions.create(
+                file=upload_tuple,
+                model=stt_model,
+                language="en",
+                prompt=(
+                    "Indian personal finance, INR, rupees, lakh, EMI, UPI, HDFC, ICICI, SBI, "
+                    "Swiggy, Zomato, BESCOM, Netflix, JioHotstar, Sony TV, MacBook, rent, bill."
+                ),
+                temperature=0.0,
+            )
+            transcript = (getattr(result, "text", None) or "").strip()
+            return transcript, f"groq:{stt_model}"
+        except Exception as exc:
+            last_exc = exc
+            continue
+
+    raise HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail=f"Speech transcription failed: {last_exc}",
+    ) from last_exc
 
 
 def synthesize_voice_speech(raw_text: str) -> bytes:

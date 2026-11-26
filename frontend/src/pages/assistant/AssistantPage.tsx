@@ -38,6 +38,7 @@ import {
 } from '../../types/assistant';
 import { FinancialAccount, FinancialCategory } from '../../types/finance';
 import { formatDate } from '../../lib/formatters';
+import { PcmCaptureSession, startPcmWavCapture } from '../../lib/voiceRecorder';
 
 interface AssistantPageProps {
   onNavigate: (view: string) => void;
@@ -325,6 +326,7 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
   const [webSearchEnabled, setWebSearchEnabled] = useState<boolean>(true);
   const [includePersonalContext, setIncludePersonalContext] = useState<boolean>(true);
   const [autoExecuteActions, setAutoExecuteActions] = useState<boolean>(false);
+  const [voiceReadAloudEnabled, setVoiceReadAloudEnabled] = useState<boolean>(false);
 
   const [conversations, setConversations] = useState<AiConversationSummary[]>([]);
   const [activeConversation, setActiveConversation] = useState<AiConversationDetail | null>(null);
@@ -345,9 +347,11 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
   // Voice states
   const [isListening, setIsListening] = useState<boolean>(false);
   const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
+  const [micLevel, setMicLevel] = useState<number>(0);
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
   const recognitionRef = useRef<SpeechRecognitionInstanceLike | null>(null);
+  const pcmCaptureRef = useRef<PcmCaptureSession | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const mediaChunksRef = useRef<BlobPart[]>([]);
@@ -426,6 +430,7 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
       setSelectedProvider(prefs.default_web_provider);
       setWebSearchEnabled(prefs.web_search_enabled);
       setAutoExecuteActions(Boolean(prefs.auto_execute_actions));
+      setVoiceReadAloudEnabled(Boolean(prefs.voice_read_aloud_enabled));
       setConversations(convList);
 
       if (convList.length > 0) {
@@ -448,6 +453,10 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
         } catch {
           // ignore
         }
+      }
+      if (pcmCaptureRef.current) {
+        pcmCaptureRef.current.cancel();
+        pcmCaptureRef.current = null;
       }
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         try {
@@ -510,6 +519,19 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
       setPreferences(updated);
     } catch (err) {
       setError((err as Error)?.message || 'Failed to update web research preference.');
+    }
+  };
+
+  const handleToggleVoiceReadAloud = async (next: boolean) => {
+    setVoiceReadAloudEnabled(next);
+    if (!next) {
+      stopActivePlayback();
+    }
+    try {
+      const updated = await assistantApi.updatePreferences({ voice_read_aloud_enabled: next });
+      setPreferences(updated);
+    } catch (err) {
+      setError((err as Error)?.message || 'Failed to update voice playback preference.');
     }
   };
 
@@ -684,8 +706,15 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
         typeof SpeechSynthesisUtterance !== 'undefined';
 
       const voices = hasBrowserSynth ? window.speechSynthesis.getVoices() : [];
-      if (!hasBrowserSynth || voices.length === 0) {
-        // On Linux Chromium/Firefox, browser speechSynthesis often has no OS voices; play server WAV via <Audio>
+      const hasNativeVoices =
+        voices.length > 0 &&
+        !voices.every(
+          (v) =>
+            !v.localService ||
+            /espeak|speech-dispatcher|dummy|google/i.test(`${v.name} ${v.voiceURI}`)
+        );
+      if (!hasBrowserSynth || !hasNativeVoices) {
+        // On Linux/Brave, browser speechSynthesis often has no working OS bridge; play server WAV via <Audio>
         void playServerAudioTts(cleanSpeech, msg.id);
         return;
       }
@@ -793,6 +822,9 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
         ...prev.filter((c) => c.id !== refreshed.id),
       ]);
       setOpenEvidenceMsgIds((prev) => ({ ...prev, [assistantReply.id]: true }));
+      if (voiceReadAloudEnabled) {
+        speakText(assistantReply);
+      }
     } catch (err) {
       setError((err as Error)?.message || 'Failed to send assistant message.');
     } finally {
@@ -842,10 +874,74 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
     }
   }, []);
 
+  const stopMediaStream = useCallback(() => {
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+      mediaStreamRef.current = null;
+    }
+    setMicLevel(0);
+  }, []);
+
+  const transcribeCapturedAudio = useCallback(
+    async (audioBlob: Blob, hadSignal: boolean = true) => {
+      if (audioBlob.size < 64) {
+        setVoiceNotice(
+          'Recorded audio was empty. Speak after clicking Voice, then click Stop Mic.'
+        );
+        return;
+      }
+
+      setIsTranscribing(true);
+      try {
+        const res = await assistantApi.transcribeVoice(audioBlob);
+        if (res.transcript) {
+          setInputText((prev) =>
+            prev.trim() ? `${prev.trim()} ${res.transcript}` : res.transcript
+          );
+          setVoiceNotice(
+            `Transcribed (${res.provider}): review the text below and click Send or Draft Expense.`
+          );
+        } else if (!hadSignal) {
+          setVoiceNotice(
+            'Your microphone captured only silence. Check your OS/browser mic input selection or unmute your mic, then try again.'
+          );
+        } else {
+          setVoiceNotice('No speech detected in audio. Try speaking closer to the microphone.');
+        }
+      } catch (err) {
+        const msg = (err as Error)?.message || '';
+        if (msg.toLowerCase().includes('503') || msg.toLowerCase().includes('disabled')) {
+          startBrowserSpeechRecognition();
+        } else {
+          setVoiceNotice(msg || 'Voice transcription failed. You can type your text directly.');
+        }
+      } finally {
+        setIsTranscribing(false);
+      }
+    },
+    [startBrowserSpeechRecognition]
+  );
+
   const handleToggleVoiceMic = async () => {
     // Stop active recording / recognition
     if (isListening) {
+      if (pcmCaptureRef.current) {
+        const session = pcmCaptureRef.current;
+        pcmCaptureRef.current = null;
+        setIsListening(false);
+        const { blob, hadSignal } = await session.stop();
+        stopMediaStream();
+        await transcribeCapturedAudio(blob, hadSignal);
+        return;
+      }
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        try {
+          if (mediaRecorderRef.current.state === 'recording') {
+            mediaRecorderRef.current.requestData();
+          }
+        } catch {
+          // ignore requestData error
+        }
         mediaRecorderRef.current.stop();
         return;
       }
@@ -858,88 +954,112 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
 
     setVoiceNotice(null);
 
-    // Primary cross-browser path on Linux/Firefox/Chromium: record microphone audio & transcribe via Whisper
-    if (mediaRecorderSupported) {
+    const hasMicApi =
+      typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia);
+
+    if (typeof window !== 'undefined' && window.isSecureContext === false && !hasMicApi) {
+      setVoiceNotice(
+        'Voice microphone capture requires HTTPS or http://localhost / http://127.0.0.1. Open the app over 127.0.0.1:5173 or type your phrase.'
+      );
+      return;
+    }
+
+    if (hasMicApi) {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaStreamRef.current = stream;
-        mediaChunksRef.current = [];
-
-        const preferredMime =
-          typeof MediaRecorder.isTypeSupported === 'function' &&
-          MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-            ? 'audio/webm;codecs=opus'
-            : typeof MediaRecorder.isTypeSupported === 'function' &&
-              MediaRecorder.isTypeSupported('audio/webm')
-            ? 'audio/webm'
-            : '';
-
-        const recorder = preferredMime
-          ? new MediaRecorder(stream, { mimeType: preferredMime })
-          : new MediaRecorder(stream);
-
-        recorder.ondataavailable = (ev) => {
-          if (ev.data && ev.data.size > 0) {
-            mediaChunksRef.current.push(ev.data);
-          }
-        };
-
-        recorder.onstop = async () => {
-          setIsListening(false);
-          stream.getTracks().forEach((t) => t.stop());
-          mediaStreamRef.current = null;
-          mediaRecorderRef.current = null;
-
-          const audioBlob = new Blob(mediaChunksRef.current, {
-            type: recorder.mimeType || 'audio/webm',
+        let stream: MediaStream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            },
           });
-          mediaChunksRef.current = [];
-          if (audioBlob.size < 64) {
-            setVoiceNotice('No audio recorded. Speak after clicking Voice and click Stop Mic.');
+        } catch (constraintErr) {
+          const cname = (constraintErr as DOMException)?.name || '';
+          if (cname === 'OverconstrainedError' || cname === 'NotReadableError') {
+            stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          } else {
+            throw constraintErr;
+          }
+        }
+        mediaStreamRef.current = stream;
+
+        // Primary path in real browsers: direct 16 kHz mono PCM WAV capture with live RMS level bar
+        try {
+          const pcmSession = await startPcmWavCapture(stream, (pct) => setMicLevel(pct));
+          if (pcmSession) {
+            pcmCaptureRef.current = pcmSession;
+            setIsListening(true);
+            setVoiceNotice('Microphone recording (16 kHz WAV)... Speak clearly, then click Stop Mic.');
             return;
           }
+        } catch {
+          // Fall cleanly into MediaRecorder if Web Audio capture isn't supported
+        }
 
-          setIsTranscribing(true);
-          try {
-            const res = await assistantApi.transcribeVoice(audioBlob);
-            if (res.transcript) {
-              setInputText((prev) =>
-                prev.trim() ? `${prev.trim()} ${res.transcript}` : res.transcript
-              );
-            } else {
-              setVoiceNotice('No speech detected in audio. Try speaking closer to the microphone.');
-            }
-          } catch (err) {
-            const msg = (err as Error)?.message || '';
-            if (msg.toLowerCase().includes('503') || msg.toLowerCase().includes('disabled')) {
-              startBrowserSpeechRecognition();
-            } else {
-              setVoiceNotice(msg || 'Voice transcription failed. You can type your text directly.');
-            }
-          } finally {
-            setIsTranscribing(false);
-          }
-        };
+        if (typeof MediaRecorder !== 'undefined') {
+          mediaChunksRef.current = [];
+          const preferredMime =
+            typeof MediaRecorder.isTypeSupported === 'function' &&
+            MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+              ? 'audio/webm;codecs=opus'
+              : typeof MediaRecorder.isTypeSupported === 'function' &&
+                MediaRecorder.isTypeSupported('audio/webm')
+              ? 'audio/webm'
+              : typeof MediaRecorder.isTypeSupported === 'function' &&
+                MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
+              ? 'audio/ogg;codecs=opus'
+              : '';
 
-        mediaRecorderRef.current = recorder;
-        recorder.start();
-        setIsListening(true);
-        return;
+          const recorder = preferredMime
+            ? new MediaRecorder(stream, { mimeType: preferredMime })
+            : new MediaRecorder(stream);
+
+          recorder.ondataavailable = (ev) => {
+            if (ev.data && ev.data.size > 0) {
+              mediaChunksRef.current.push(ev.data);
+            }
+          };
+
+          recorder.onstop = async () => {
+            setIsListening(false);
+            stopMediaStream();
+            mediaRecorderRef.current = null;
+
+            const audioBlob = new Blob(mediaChunksRef.current, {
+              type: recorder.mimeType || preferredMime || 'audio/webm',
+            });
+            mediaChunksRef.current = [];
+            await transcribeCapturedAudio(audioBlob, true);
+          };
+
+          mediaRecorderRef.current = recorder;
+          recorder.start(250);
+          setIsListening(true);
+          setVoiceNotice('Microphone recording... Speak clearly now, then click Stop Mic.');
+          return;
+        }
       } catch (err) {
+        stopMediaStream();
         const errName = (err as DOMException)?.name || '';
+        const errMsg = (err as Error)?.message || '';
         if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
           setVoiceNotice(
-            'Microphone permission was denied in the browser. Allow microphone access or type your phrase directly.'
+            'Microphone permission was denied in the browser. Click the lock/mic icon in the address bar to allow microphone access.'
           );
           return;
         }
         if (errName === 'NotFoundError' || errName === 'DevicesNotFoundError') {
           setVoiceNotice(
-            'No microphone device found on this system. You can still type or paste phrases and click "Draft Expense".'
+            'No microphone device found on this system. Connect a mic or type your phrase directly.'
           );
           return;
         }
-        // Fallback to Web Speech API if MediaRecorder initialization threw another error
+        setVoiceNotice(
+          `Microphone error (${errName || 'audio'}): ${errMsg || 'Unable to access microphone device.'}`
+        );
+        return;
       }
     }
 
@@ -1677,6 +1797,24 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
             <span>Auto-Execute Actions</span>
           </label>
 
+          <label
+            className={`inline-flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl border text-xs cursor-pointer ${
+              voiceReadAloudEnabled
+                ? 'border-indigo-300 bg-indigo-50 text-indigo-900 font-medium'
+                : 'border-slate-200 bg-white text-slate-700'
+            }`}
+            title="Automatically read new AI replies aloud using voice playback"
+          >
+            <input
+              type="checkbox"
+              checked={voiceReadAloudEnabled}
+              onChange={(e) => handleToggleVoiceReadAloud(e.target.checked)}
+              className="rounded text-indigo-600"
+            />
+            <Volume2 className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Auto-Speak</span>
+          </label>
+
           {speakingMessageId && (
             <button
               type="button"
@@ -1992,6 +2130,49 @@ export const AssistantPage: React.FC<AssistantPageProps> = ({ onNavigate }) => {
 
           {/* Composer */}
           <div className="p-3 border-t border-slate-200 bg-slate-50/70 rounded-b-2xl space-y-2">
+            {(voiceNotice || isListening || isTranscribing) && (
+              <div
+                role="status"
+                className={`px-3 py-2 rounded-xl border text-xs flex items-center justify-between gap-2 ${
+                  isListening
+                    ? 'bg-rose-50 border-rose-200 text-rose-800'
+                    : isTranscribing
+                    ? 'bg-amber-50 border-amber-200 text-amber-800'
+                    : 'bg-indigo-50 border-indigo-200 text-indigo-900'
+                }`}
+              >
+                <span className="flex items-center gap-2 flex-1 min-w-0">
+                  {isListening && <span className="w-2 h-2 rounded-full bg-rose-600 animate-ping shrink-0" />}
+                  <span className="truncate">
+                    {isTranscribing
+                      ? 'Transcribing microphone audio cleanly via Groq Whisper...'
+                      : voiceNotice || 'Microphone listening...'}
+                  </span>
+                  {isListening && (
+                    <span
+                      className="inline-flex items-center gap-1.5 ml-2 shrink-0"
+                      aria-label="Live microphone input level"
+                    >
+                      <span className="w-16 h-1.5 bg-rose-200 rounded-full overflow-hidden">
+                        <span
+                          className="block h-full bg-rose-600 transition-all duration-100"
+                          style={{ width: `${Math.max(8, micLevel)}%` }}
+                        />
+                      </span>
+                    </span>
+                  )}
+                </span>
+                {voiceNotice && !isListening && !isTranscribing && (
+                  <button
+                    type="button"
+                    onClick={() => setVoiceNotice(null)}
+                    className="text-indigo-600 hover:text-indigo-800 font-medium shrink-0"
+                  >
+                    Dismiss
+                  </button>
+                )}
+              </div>
+            )}
             <div className="flex flex-col sm:flex-row gap-2">
               <textarea
                 rows={2}

@@ -475,4 +475,89 @@ describe('AssistantPage (Phase 10)', () => {
     expect(screen.getByText(/Auto-Executed & Saved:/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Open Subscriptions →/i })).toBeInTheDocument();
   });
+
+  it('records audio via MediaRecorder, transcribes via Whisper API cleanly, and persists Auto-Speak toggle', async () => {
+    vi.mocked(assistantApi.transcribeVoice).mockResolvedValue({
+      transcript: 'Can I buy a Sony TV?',
+      provider: 'groq:whisper-large-v3-turbo',
+    });
+    vi.mocked(assistantApi.updatePreferences).mockResolvedValue({
+      ...basePrefs,
+      voice_read_aloud_enabled: true,
+    });
+
+    const stopTrackSpy = vi.fn();
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      mediaDevices: {
+        getUserMedia: vi.fn().mockResolvedValue({
+          getTracks: () => [{ stop: stopTrackSpy }],
+        }),
+      },
+    });
+
+    class MockMediaRecorder {
+      static isTypeSupported = vi.fn(() => true);
+      state = 'inactive';
+      mimeType = 'audio/webm;codecs=opus';
+      ondataavailable: ((ev: { data: Blob }) => void) | null = null;
+      onstop: (() => void) | null = null;
+      start() {
+        this.state = 'recording';
+        if (this.ondataavailable) {
+          this.ondataavailable({
+            data: new Blob([new Uint8Array(256)], { type: 'audio/webm' }),
+          });
+        }
+      }
+      requestData() {
+        // no-op
+      }
+      stop() {
+        this.state = 'inactive';
+        if (this.onstop) this.onstop();
+      }
+    }
+    vi.stubGlobal('MediaRecorder', MockMediaRecorder);
+
+    render(<AssistantPage onNavigate={mockNavigate} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /^Voice$/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Voice$/i }));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Stop Mic/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Stop Mic/i }));
+    await waitFor(() => {
+      expect(assistantApi.transcribeVoice).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/Ask about spending/i)).toHaveValue(
+        'Can I buy a Sony TV?'
+      );
+    });
+    expect(stopTrackSpy).toHaveBeenCalled();
+
+    fireEvent.click(screen.getByLabelText(/Auto-Speak/i));
+    await waitFor(() => {
+      expect(assistantApi.updatePreferences).toHaveBeenCalledWith({
+        voice_read_aloud_enabled: true,
+      });
+    });
+
+    vi.unstubAllGlobals();
+  });
+
+  it('encodes 16 kHz RIFF WAV audio cleanly from PCM float samples for Groq Whisper', async () => {
+    const { encodePcmWav } = await import('../lib/voiceRecorder');
+    const samples = new Float32Array(4800); // 100ms @ 48 kHz
+    samples[10] = 0.25;
+    const wav = encodePcmWav([samples], 48000);
+    expect(wav.type).toBe('audio/wav');
+    expect(wav.size).toBe(44 + 1600 * 2);
+  });
 });

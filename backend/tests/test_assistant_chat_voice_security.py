@@ -564,3 +564,118 @@ def test_auto_execute_toggle_creates_bills_and_ott_subscriptions_automatically(a
     assert bbody["draft_action"]["execution_status"] == "executed"
     assert bbody["draft_action"]["execution_mode"] == "auto"
     assert tc.get("/api/v1/bills").json()["total"] == 1
+
+
+def test_hybrid_purchase_affordability_uses_internal_pg_and_web_and_asks_clarifying_questions(
+    assistant_api_client, monkeypatch
+):
+    tc, created_emails = assistant_api_client
+    csrf = _register_and_login(tc, created_emails, "hybrid_buy")
+
+    # Seed internal PostgreSQL account + upcoming bill
+    acc_res = tc.post(
+        "/api/v1/finance/accounts",
+        json={
+            "name": "HDFC Wealth Savings",
+            "account_type": "savings",
+            "opening_balance": "240000.00",
+            "currency": "INR",
+        },
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert acc_res.status_code in (200, 201), acc_res.text
+
+    bill_res = tc.post(
+        "/api/v1/bills",
+        json={
+            "bill_name": "Society Maintenance",
+            "bill_category": "maintenance",
+            "bill_type": "one_time",
+            "expected_amount": "3500.00",
+            "due_date": (dt.date.today() + dt.timedelta(days=5)).isoformat(),
+        },
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert bill_res.status_code in (200, 201), bill_res.text
+
+    captured_web_queries: list[str] = []
+
+    def _mock_product_search(
+        self, *, provider_id, query, max_results=5, include_content=True, topic="finance"
+    ):
+        captured_web_queries.append(query)
+        return WebSearchResponse(
+            provider=provider_id,
+            query=query,
+            status="completed",
+            retrieved_at="2026-11-26T12:00:00+00:00",
+            sources=[
+                NormalizedWebSource(
+                    citation_id=1,
+                    provider=provider_id,
+                    title="Sony Bravia & Apple MacBook India Pricing",
+                    url="https://www.apple.com/in/shop/buy-mac",
+                    domain="www.apple.com",
+                    snippet="Apple MacBook Air M3 starts around ₹99,900 - ₹1,14,900 in India; Sony Bravia 4K LED TVs range ₹45,000 - ₹1,40,000.",
+                    retrieved_at="2026-11-26T12:00:00+00:00",
+                    content_available=False,
+                )
+            ],
+        )
+
+    monkeypatch.setattr(WebResearchService, "execute_search", _mock_product_search)
+
+    conv = tc.post(
+        "/api/v1/assistant/conversations",
+        json={"title": "Laptop & TV Affordability", "web_search_enabled": True},
+        headers={"X-CSRF-Token": csrf},
+    ).json()
+
+    # Case 1: Deterministic fallback mode checks both PostgreSQL balances & Web search + clarifying questions
+    monkeypatch.setattr(GroqAiProvider, "is_available", lambda self: False)
+    r1 = tc.post(
+        f"/api/v1/assistant/conversations/{conv['id']}/messages",
+        json={
+            "content": "Can I afford an Apple MacBook laptop of price 100000 or 1 lakh?",
+            "web_search_enabled": True,
+            "web_provider": "tavily",
+            "include_personal_context": True,
+        },
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert r1.status_code == 200, r1.text
+    b1 = r1.json()
+    assert b1["web_search_used"] is True
+    assert "get_account_balances" in b1["tools_invoked"]
+    assert "get_spending_summary" in b1["tools_invoked"]
+    assert "get_upcoming_commitments" in b1["tools_invoked"]
+    assert "get_forecast_and_insights" in b1["tools_invoked"]
+    assert "web_research:tavily" in b1["tools_invoked"]
+
+    origins = {e["origin"] for e in b1["evidence_items"]}
+    assert "personal_financial_record" in origins
+    assert "external_web" in origins
+    assert "240,000.00" in b1["content"]
+    assert "Quick Questions to Tailor This Better" in b1["content"]
+    assert "HDFC Wealth Savings" not in captured_web_queries[0]
+    assert "240000" not in captured_web_queries[0]
+
+    # Case 2: Open purchase question ("can I buy a sony TV?") runs internal tools + web research cleanly
+    captured_web_queries.clear()
+    r2 = tc.post(
+        f"/api/v1/assistant/conversations/{conv['id']}/messages",
+        json={
+            "content": "can I buy a sony TV?",
+            "web_search_enabled": True,
+            "web_provider": "tavily",
+            "include_personal_context": True,
+        },
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert r2.status_code == 200, r2.text
+    b2 = r2.json()
+    assert b2["web_search_used"] is True
+    assert "get_account_balances" in b2["tools_invoked"]
+    assert "web_research:tavily" in b2["tools_invoked"]
+    assert captured_web_queries and "sony tv" in captured_web_queries[0].lower()
+    assert "Quick Questions to Tailor This Better" in b2["content"]
