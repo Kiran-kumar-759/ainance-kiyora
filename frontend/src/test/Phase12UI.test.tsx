@@ -113,10 +113,11 @@ describe('Phase 12 Frontend Transformation & Reminders Module', () => {
     expect(screen.getByText(/Sample Preview Only/i)).toBeInTheDocument();
     expect(screen.getByText(/Ready \(1.8 ms\)/i)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /^Login$/i }));
+    const signInLinks = screen.getAllByRole('link', { name: /^Sign In$/i });
+    fireEvent.click(signInLinks[0]);
     expect(onNavigate).toHaveBeenCalledWith('login');
 
-    fireEvent.click(screen.getByRole('button', { name: /^Get Started$/i }));
+    fireEvent.click(screen.getByRole('link', { name: /Get Started Free/i }));
     expect(onNavigate).toHaveBeenCalledWith('register');
   });
 

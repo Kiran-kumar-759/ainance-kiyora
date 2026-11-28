@@ -1,27 +1,7 @@
-import React from 'react';
-import {
-  ArrowRight,
-  BarChart3,
-  BellRing,
-  Bot,
-  CalendarDays,
-  CheckCircle2,
-  CreditCard,
-  FileSpreadsheet,
-  FileText,
-  Landmark,
-  Lock,
-  MailCheck,
-  RefreshCw,
-  ScanText,
-  Server,
-  ShieldCheck,
-  Sparkles,
-  TrendingUp,
-  Wallet,
-  XCircle,
-} from 'lucide-react';
+import React, { useEffect, useRef } from 'react';
+import { RefreshCw } from 'lucide-react';
 import { SystemStatusState } from '../../types';
+import './landing.css';
 
 interface LandingPageProps {
   health: SystemStatusState['health'];
@@ -34,69 +14,6 @@ interface LandingPageProps {
   isAuthenticated?: boolean;
 }
 
-const FEATURES = [
-  {
-    icon: Wallet,
-    title: 'Multi-Account & Liability Ledger',
-    desc: 'Separate liquid balances across savings, wallets, and investments from credit card dues cleanly.',
-    accent: 'text-indigo-600 bg-indigo-50',
-  },
-  {
-    icon: FileSpreadsheet,
-    title: 'Smart Statement Imports',
-    desc: 'Upload CSV & XLSX bank statements with custom column mapping, transfer handling & deduplication.',
-    accent: 'text-blue-600 bg-blue-50',
-  },
-  {
-    icon: BarChart3,
-    title: 'Deep Cashflow Analytics',
-    desc: 'Interactive period comparisons, category drill-downs, savings rates, and printable reports.',
-    accent: 'text-violet-600 bg-violet-50',
-  },
-  {
-    icon: CalendarDays,
-    title: 'Bills & Recurring Schedules',
-    desc: 'Track variable utility bills, partial payments, vendor references & recurrence automation.',
-    accent: 'text-emerald-600 bg-emerald-50',
-  },
-  {
-    icon: CreditCard,
-    title: 'OTT & Subscription Hygiene',
-    desc: 'Monitor paid months count, billing cycles, renewal price jumps, and recurring merchant candidates.',
-    accent: 'text-indigo-600 bg-indigo-50',
-  },
-  {
-    icon: Landmark,
-    title: 'Loans, EMIs & Prepayments',
-    desc: 'Full amortization curves, floating rate adjustments, and what-if prepayment interest savings.',
-    accent: 'text-blue-600 bg-blue-50',
-  },
-  {
-    icon: ScanText,
-    title: 'Document OCR & Gmail Ingestion',
-    desc: 'Two-panel receipt inspection powered by RapidOCR plus read-only Gmail bill extraction.',
-    accent: 'text-violet-600 bg-violet-50',
-  },
-  {
-    icon: BellRing,
-    title: 'Reminders & Delivery Logs',
-    desc: 'Automated in-app & SMTP reminder schedules per commitment without ever auto-marking bills paid.',
-    accent: 'text-amber-600 bg-amber-50',
-  },
-  {
-    icon: TrendingUp,
-    title: 'Cashflow Forecasting & Scenarios',
-    desc: 'Multi-horizon projections with anomaly flags and walk-forward forecast accuracy metrics.',
-    accent: 'text-indigo-600 bg-indigo-50',
-  },
-  {
-    icon: Bot,
-    title: 'AI Finance Assistant (RAG + Web)',
-    desc: 'Strict separation of your PostgreSQL records, uploaded OCR docs, and LangSearch/Firecrawl/Tavily research.',
-    accent: 'text-violet-600 bg-violet-50',
-  },
-];
-
 export const LandingPage: React.FC<LandingPageProps> = ({
   health,
   readiness,
@@ -107,482 +24,587 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   onNavigate,
   isAuthenticated = false,
 }) => {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const heroRef = useRef<HTMLElement | null>(null);
+  const glassRef = useRef<HTMLDivElement | null>(null);
+
   const backendReachable = Boolean(health && health.status === 'ok');
   const databaseReady = Boolean(readiness?.database?.ready);
 
+  useEffect(() => {
+    const root = rootRef.current;
+    const hero = heroRef.current;
+    const glass = glassRef.current;
+    if (!root || typeof window === 'undefined') return;
+
+    const reduceMotion =
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const onWindowMove = (e: PointerEvent) => {
+      root.style.setProperty('--mx', `${e.clientX}px`);
+      root.style.setProperty('--my', `${e.clientY}px`);
+    };
+
+    window.addEventListener('pointermove', onWindowMove, { passive: true });
+
+    const glowTargets = root.querySelectorAll<HTMLElement>(
+      '.fs-card, .fs-proof > div, .fs-gc, .fs-band > div, .fs-glass'
+    );
+    const cardCleanups: Array<() => void> = [];
+    glowTargets.forEach((el) => {
+      const onCardMove = (e: PointerEvent) => {
+        const b = el.getBoundingClientRect();
+        el.style.setProperty('--x', `${e.clientX - b.left}px`);
+        el.style.setProperty('--y', `${e.clientY - b.top}px`);
+      };
+      el.addEventListener('pointermove', onCardMove);
+      cardCleanups.push(() => el.removeEventListener('pointermove', onCardMove));
+    });
+
+    let heroCleanup: (() => void) | undefined;
+    if (glass && hero && !reduceMotion) {
+      const onHeroMove = (e: PointerEvent) => {
+        const b = glass.getBoundingClientRect();
+        const dx = (e.clientX - (b.left + b.width / 2)) / (window.innerWidth / 2 || 1);
+        const dy = (e.clientY - (b.top + b.height / 2)) / (window.innerHeight / 2 || 1);
+        glass.style.setProperty('--ry', `${Math.max(-1, Math.min(1, dx)) * 9}deg`);
+        glass.style.setProperty('--rx', `${Math.max(-1, Math.min(1, dy)) * -7}deg`);
+      };
+      const onHeroLeave = () => {
+        glass.style.setProperty('--ry', '0deg');
+        glass.style.setProperty('--rx', '0deg');
+      };
+      hero.addEventListener('pointermove', onHeroMove);
+      hero.addEventListener('pointerleave', onHeroLeave);
+      heroCleanup = () => {
+        hero.removeEventListener('pointermove', onHeroMove);
+        hero.removeEventListener('pointerleave', onHeroLeave);
+      };
+    }
+
+    return () => {
+      window.removeEventListener('pointermove', onWindowMove);
+      cardCleanups.forEach((fn) => fn());
+      heroCleanup?.();
+    };
+  }, []);
+
+  const handleRouteClick =
+    (view: string) => (e: React.MouseEvent<HTMLAnchorElement>) => {
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      e.preventDefault();
+      onNavigate(view);
+    };
+
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      {/* Sticky Navigation Header */}
-      <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/85 backdrop-blur-md">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center text-white font-bold text-base shadow-sm">
-              ₹
-            </div>
-            <div>
-              <span className="text-sm font-bold text-slate-900 block leading-tight">
-                AI Personal Finance Manager
-              </span>
-              <span className="text-[11px] font-medium text-indigo-600">
-                India-First • FinSight AI Platform
-              </span>
-            </div>
+    <div ref={rootRef} className="fs-landing">
+      <div className="fs-amb" aria-hidden="true" />
+
+      <header ref={heroRef} className="fs-hero">
+        <nav className="fs-nav" aria-label="Main">
+          <a
+            className="fs-logo"
+            href="#top"
+            aria-label="FinSight AI — AI Personal Finance Manager"
+          >
+            <i />
+            <span>FinSight AI</span>
+          </a>
+
+          <div className="fs-pill">
+            <a href="#top">Home</a>
+            <a href="#about">About</a>
+            <a href="#features">Features</a>
+            <a href="#how">How it works</a>
+            <a href="#security">Security</a>
           </div>
 
-          <nav className="hidden md:flex items-center gap-6 text-xs font-semibold text-slate-600">
-            <a href="#features" className="hover:text-indigo-600 transition-colors">
-              Features
-            </a>
-            <a href="#how-it-works" className="hover:text-indigo-600 transition-colors">
-              How It Works
-            </a>
-            <a href="#ai-assistant" className="hover:text-indigo-600 transition-colors">
-              AI Assistant
-            </a>
-            <a href="#security" className="hover:text-indigo-600 transition-colors">
-              Security & Status
-            </a>
-          </nav>
-
-          <div className="flex items-center gap-2.5">
+          <div className="fs-right">
             {isAuthenticated ? (
-              <button
-                type="button"
-                onClick={() => onNavigate('dashboard')}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-sm transition-colors"
+              <a
+                className="fs-btn-o"
+                href="/dashboard"
+                onClick={handleRouteClick('dashboard')}
               >
-                <span>Open Dashboard</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
+                Open Dashboard
+              </a>
             ) : (
               <>
-                <button
-                  type="button"
-                  onClick={() => onNavigate('login')}
-                  className="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+                <a href="/login" onClick={handleRouteClick('login')}>
+                  Sign In
+                </a>
+                <a
+                  className="fs-btn-o"
+                  href="/register"
+                  onClick={handleRouteClick('register')}
                 >
-                  Login
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onNavigate('register')}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white text-xs font-semibold shadow-sm transition-all"
-                >
-                  <span>Get Started</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
+                  Get started
+                </a>
               </>
             )}
+          </div>
+        </nav>
+
+        <div className="fs-copy" id="top">
+          <span className="fs-eb">
+            India-First Personal Finance SaaS • Powered by Verifiable Ledger Data &amp; AI
+          </span>
+          <h1>
+            Take Control of Your Money.
+            <br />
+            Understand Every Rupee.
+          </h1>
+          <p className="fs-sub">
+            An all-in-one personal finance manager built for Indian households and working
+            professionals. Track bank accounts, UPI expenses, utility bills, OTT subscriptions, and
+            loan EMIs alongside local OCR receipt scanning, read-only Gmail bill ingestion, cashflow
+            forecasting, and a voice-enabled AI advisor grounded in your actual records.
+          </p>
+          <div className="fs-ctas">
+            <a
+              className="fs-cta"
+              href={isAuthenticated ? '/dashboard' : '/register'}
+              onClick={handleRouteClick(isAuthenticated ? 'dashboard' : 'register')}
+            >
+              {isAuthenticated ? 'Open Dashboard' : 'Get Started Free'} <b>→</b>
+            </a>
+            {!isAuthenticated && (
+              <a className="fs-alt" href="/login" onClick={handleRouteClick('login')}>
+                Sign In
+              </a>
+            )}
+          </div>
+        </div>
+
+        <div className="fs-stg" aria-hidden="true">
+          <div className="fs-po" />
+          <div className="fs-bo" />
+          <div className="fs-waist" />
+
+          <div className="fs-gc fs-c1">
+            <h4>Expenses Report</h4>
+            <div className="ring">
+              ₹52,252<small>Total expenses</small>
+            </div>
+          </div>
+          <div className="fs-gc fs-c2">
+            <h4>Saving Budget</h4>
+            <div className="n">₹1,35,352</div>
+            <small>updated today</small>
+          </div>
+          <div className="fs-gc fs-c3">
+            <div className="n">₹85,000</div>
+            <small>updated today</small>
+          </div>
+          <div className="fs-gc fs-c4">
+            <h4>Emergency</h4>
+          </div>
+          <div className="fs-gc fs-c5" />
+          <div className="fs-gc fs-c6">
+            <h4>Transactions</h4>
+            <div className="bar" />
+            <div className="bar" />
+          </div>
+          <div className="fs-gc fs-c7">
+            <h4>Budgets</h4>
+            <div className="bar">Save for a Car</div>
+            <div className="bar">Save for Education</div>
+            <div className="bar">Vacation Fund</div>
+          </div>
+          <div className="fs-gc fs-c8">
+            <h4>Your Goals</h4>
+            <div className="bar">House by the Sea</div>
+            <div className="n">₹5,35,200</div>
+          </div>
+
+          <div ref={glassRef} className="fs-glass">
+            <div className="in">
+              <span className="sample-tag">Sample Preview Only</span>
+              <div className="l">Total Balance</div>
+              <div className="t">
+                ₹5,23,734 <span>◉</span>
+              </div>
+              <div className="row">
+                <div>
+                  <span>Income</span>
+                  <b>₹2,25,222</b>
+                </div>
+                <div>
+                  <span>Expense</span>
+                  <b>₹1,12,522</b>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </header>
 
-      {/* Hero Section with Selective Glassmorphism */}
-      <section className="relative overflow-hidden bg-navy-950 text-white pt-16 pb-20 sm:pt-24 sm:pb-28">
-        <div
-          aria-hidden="true"
-          className="absolute -top-32 -left-24 w-[480px] h-[480px] rounded-full bg-indigo-600/25 blur-3xl"
-        />
-        <div
-          aria-hidden="true"
-          className="absolute -bottom-32 right-0 w-[440px] h-[440px] rounded-full bg-violet-600/20 blur-3xl"
-        />
+      <div className="fs-proof">
+        <div>
+          <b>INR-Native &amp; IST Ready</b>April–March fiscal year and DD/MM/YYYY formatting
+        </div>
+        <div>
+          <b>Honest Double-Entry Ledger</b>Liabilities never inflate liquid cash balances
+        </div>
+        <div>
+          <b>Evidence-Backed AI</b>Strict separation between your ledger records and web research
+        </div>
+      </div>
 
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
-          <div className="lg:col-span-6 space-y-6 animate-slideUp">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/15 border border-indigo-400/30 text-indigo-200 text-xs font-semibold">
-              <Sparkles className="w-3.5 h-3.5 text-indigo-300" />
-              <span>Built for Indian Households & Working Professionals</span>
-            </div>
+      <section id="about" className="fs-section fs-center">
+        <h2>Most finance trackers only look backwards.</h2>
+        <p className="fs-lead">
+          Most finance trackers only show past expenses or connect blindly to generic chatbots.
+          FinSight AI (AI Personal Finance Manager) combines a PostgreSQL-backed personal finance
+          ledger with explainable forecasting and a hybrid AI assistant. Every balance, subscription
+          cycle, loan EMI, and reminder is verifiable—and when you ask a financial question (like
+          whether you can afford a purchase), the AI checks your real bank balances and upcoming
+          commitments alongside live market pricing from web research, asking smart follow-up
+          questions before giving advice.
+        </p>
+      </section>
 
-            <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight leading-[1.12] text-white">
-              Take Control of Your Money.{' '}
-              <span className="bg-gradient-to-r from-indigo-300 via-blue-200 to-violet-300 bg-clip-text text-transparent">
-                Understand Every Rupee.
-              </span>
-            </h1>
-
-            <p className="text-sm sm:text-base text-slate-300 leading-relaxed max-w-xl">
-              Track bank accounts, UPI expenses, OTT subscriptions, loans, EMIs, and utility
-              bills in one PostgreSQL-backed workspace — complete with local document OCR, Gmail
-              bill ingestion, cashflow forecasting, and an auditable AI finance assistant.
+      <section id="features" className="fs-section">
+        <h2 className="fs-center">Everything your money touches, in one place</h2>
+        <div className="fs-grid">
+          <div className="fs-card">
+            <div className="fs-ico" />
+            <h3>Accounts, Ledger &amp; Credit Isolation</h3>
+            <p>
+              Manage savings, current, cash, wallet, and credit card accounts cleanly with zero-sum
+              internal transfers and explicit separation between liquid assets and card/loan
+              liabilities.
             </p>
-
-            <div className="flex flex-wrap items-center gap-3 pt-1">
-              <button
-                type="button"
-                onClick={() => onNavigate(isAuthenticated ? 'dashboard' : 'register')}
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-400 hover:to-violet-400 text-white text-sm font-semibold shadow-lg shadow-indigo-950/50 transition-all"
-              >
-                <span>{isAuthenticated ? 'Continue to Workspace' : 'Create Free Account'}</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => onNavigate('login')}
-                className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-white text-sm font-semibold backdrop-blur-sm transition-colors"
-              >
-                <span>Sign In</span>
-              </button>
-            </div>
-
-            <div className="grid grid-cols-3 gap-4 pt-4 border-t border-slate-800/90 text-xs">
-              <div>
-                <p className="font-bold text-white">INR-Native</p>
-                <p className="text-slate-400 mt-0.5">Apr–Mar FY & DD/MM/YYYY</p>
-              </div>
-              <div>
-                <p className="font-bold text-white">Honest Ledger</p>
-                <p className="text-slate-400 mt-0.5">Liabilities never inflate cash</p>
-              </div>
-              <div>
-                <p className="font-bold text-white">Zero Data Fabrication</p>
-                <p className="text-slate-400 mt-0.5">Every insight cites its source</p>
-              </div>
-            </div>
           </div>
-
-          {/* Illustrative Preview Glass Card */}
-          <div className="lg:col-span-6">
-            <div className="glass-dark rounded-2xl p-5 sm:p-6 space-y-4">
-              <div className="flex items-center justify-between gap-2 border-b border-slate-700/70 pb-3">
-                <div>
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-indigo-300">
-                    Illustrative Interface Preview
-                  </span>
-                  <h2 className="text-sm font-bold text-white">Workspace Snapshot</h2>
-                </div>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/15 text-amber-200 border border-amber-400/30">
-                  Sample Preview Only
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-xl bg-slate-900/90 border border-slate-700/80 p-3.5">
-                  <p className="text-[11px] text-slate-400">Liquid Cash & Savings</p>
-                  <p className="text-lg font-bold text-white mt-1 tabular-nums">₹4,82,500</p>
-                  <p className="text-[11px] text-emerald-400 mt-1">Across linked accounts</p>
-                </div>
-                <div className="rounded-xl bg-slate-900/90 border border-slate-700/80 p-3.5">
-                  <p className="text-[11px] text-slate-400">Tracked Obligations</p>
-                  <p className="text-lg font-bold text-white mt-1 tabular-nums">₹28,490</p>
-                  <p className="text-[11px] text-indigo-300 mt-1">Bills • EMIs • OTT Plans</p>
-                </div>
-              </div>
-
-              <div className="rounded-xl bg-slate-900/80 border border-slate-700/80 p-3.5 space-y-2.5">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-300 font-medium flex items-center gap-1.5">
-                    <Bot className="w-3.5 h-3.5 text-indigo-400" />
-                    AI Assistant Grounded Answer
-                  </span>
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-200">
-                    Ledger + Web Citation
-                  </span>
-                </div>
-                <p className="text-xs text-slate-300 leading-relaxed">
-                  “You have paid Netflix Standard for 4 months cleanly. Your BESCOM bill draft for
-                  ₹1,200 is ready for your confirmation or automatic saving.”
-                </p>
-              </div>
-
-              <p className="text-[11px] text-slate-400 text-center">
-                Connect accounts or upload statements after signing in to see your live numbers.
-              </p>
-            </div>
+          <div className="fs-card">
+            <div className="fs-ico" />
+            <h3>Smart Bank Statement Imports</h3>
+            <p>
+              Upload .csv and .xlsx bank statements with interactive column mapping, validation, and
+              duplicate detection before committing to your ledger.
+            </p>
+          </div>
+          <div className="fs-card">
+            <div className="fs-ico" />
+            <h3>Analytics, Period Comparisons &amp; Reports</h3>
+            <p>
+              Inspect cashflow trends, savings rate, category drill-downs, and downloadable CSV
+              summary reports.
+            </p>
+          </div>
+          <div className="fs-card">
+            <div className="fs-ico" />
+            <h3>Bills, OTT Subscriptions &amp; Loans/EMIs</h3>
+            <p>
+              Track one-time and recurring bills, partial payments, OTT renewal cycles with
+              paid-months history, loan amortization schedules, interest rate revisions, and what-if
+              prepayment simulations.
+            </p>
+          </div>
+          <div className="fs-card">
+            <div className="fs-ico" />
+            <h3>Reminders &amp; Notification Center</h3>
+            <p>
+              Schedule and dispatch due alerts across bills, subscriptions, and EMIs with delivery
+              logs and SMTP status checks—without ever auto-marking an obligation as paid.
+            </p>
+          </div>
+          <div className="fs-card">
+            <div className="fs-ico" />
+            <h3>Document OCR &amp; Read-Only Gmail Bill Sync</h3>
+            <p>
+              Extract amounts, dates, vendors, and GST/invoice fields from uploaded PDFs and
+              receipts locally using RapidOCR, or sync vendor bills cleanly via read-only Gmail OAuth
+              (2.0 + PKCE) with two-panel human review.
+            </p>
+          </div>
+          <div className="fs-card">
+            <div className="fs-ico" />
+            <h3>Cashflow Forecasting &amp; Expense Intelligence</h3>
+            <p>
+              Detect anomalies, discover recurring merchants, and project multi-horizon cashflow (7
+              to 365 days) with transparent confidence labels (high / medium / low /
+              insufficient_data).
+            </p>
+          </div>
+          <div className="fs-card">
+            <div className="fs-ico" />
+            <h3>Hybrid AI Finance Assistant &amp; Voice Copilot</h3>
+            <p>
+              Ask questions via text or voice (16 kHz WAV mic capture + Whisper STT + local WAV Read
+              Aloud). Combines PostgreSQL tools, uploaded document RAG, and selectable web search
+              providers (Tavily, LangSearch, Firecrawl) with clear [1], [2] citations and
+              confirmation-gated (or optional Auto-Execute) bill and subscription drafts.
+            </p>
           </div>
         </div>
       </section>
 
-      {/* Capabilities Grid */}
-      <section id="features" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-20">
-        <div className="text-center max-w-2xl mx-auto mb-12">
-          <p className="text-xs font-bold uppercase tracking-widest text-indigo-600">
-            Complete Financial Suite
-          </p>
-          <h2 className="mt-2 text-2xl sm:text-3xl font-bold text-slate-900">
-            Everything needed to master daily cashflow & long-term obligations
-          </h2>
-          <p className="mt-3 text-sm text-slate-600">
-            Designed cleanly without cluttered dashboards or fabricated forecasts.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {FEATURES.map((f) => {
-            const Icon = f.icon;
-            return (
-              <div
-                key={f.title}
-                className="rounded-2xl bg-white border border-slate-200/80 p-5 shadow-card hover:shadow-elevated hover:-translate-y-0.5 transition-all duration-200"
-              >
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${f.accent}`}>
-                  <Icon className="w-5 h-5" />
-                </div>
-                <h3 className="mt-4 text-sm font-bold text-slate-900">{f.title}</h3>
-                <p className="mt-1.5 text-xs text-slate-600 leading-relaxed">{f.desc}</p>
-              </div>
-            );
-          })}
+      <section id="how" className="fs-section fs-center">
+        <h2>How it works</h2>
+        <div className="fs-grid fs-steps" style={{ textAlign: 'left' }}>
+          <div className="fs-card">
+            <span>1</span>
+            <h3>Set Up Your Workspace</h3>
+            <p>
+              Create an account and confirm INR, timezone (Asia/Kolkata), and notification
+              preferences.
+            </p>
+          </div>
+          <div className="fs-card">
+            <span>2</span>
+            <h3>Bring Your Real Data</h3>
+            <p>
+              Add accounts, import CSV/XLSX statements, scan bill PDFs with OCR, or link read-only
+              Gmail bill ingestion.
+            </p>
+          </div>
+          <div className="fs-card">
+            <span>3</span>
+            <h3>Track, Forecast &amp; Ask AI</h3>
+            <p>
+              Monitor net position vs. upcoming commitments, manage reminders, and ask hybrid AI
+              questions backed by citations.
+            </p>
+          </div>
         </div>
       </section>
 
-      {/* How It Works & AI Architecture */}
-      <section id="how-it-works" className="bg-white border-y border-slate-200/80 py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
-          <div className="lg:col-span-6 space-y-6">
+      <section id="security" className="fs-section fs-center">
+        <h2>Security you can verify</h2>
+        <div className="fs-grid" style={{ textAlign: 'left' }}>
+          <div className="fs-card">
+            <h3>Session &amp; CSRF Protection</h3>
+            <p>
+              HttpOnly session cookies, Argon2id password hashing, and double-submit X-CSRF-Token
+              validation on state-changing routes.
+            </p>
+          </div>
+          <div className="fs-card">
+            <h3>Multi-Tenant Isolation</h3>
+            <p>
+              Queries are scoped per authenticated user_id across ledgers, RAG document chunks, and
+              chat histories.
+            </p>
+          </div>
+          <div className="fs-card">
+            <h3>No Unconsented Ledger Edits</h3>
+            <p>
+              Financial records, OCR extractions, and AI action drafts require explicit review unless
+              you turn Auto-Execute Actions on.
+            </p>
+          </div>
+          <div className="fs-card">
+            <h3>Private Data Stays Private</h3>
+            <p>
+              Web search queries are sanitized so personal account names and exact bank balances are
+              never sent to external search providers.
+            </p>
+          </div>
+        </div>
+
+        {/* Live Backend & Database Readiness Panel */}
+        <div className="fs-status-panel">
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px',
+              marginBottom: '16px',
+            }}
+          >
             <div>
-              <p className="text-xs font-bold uppercase tracking-widest text-indigo-600">
-                Quick Onboarding
-              </p>
-              <h2 className="mt-2 text-2xl font-bold text-slate-900">Up and running in minutes</h2>
+              <span
+                style={{
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  color: '#a6ee62',
+                  display: 'block',
+                }}
+              >
+                System Foundation
+              </span>
+              <strong style={{ fontSize: '16px', fontWeight: 500, color: '#f1f7f2' }}>
+                Live Backend &amp; PostgreSQL Readiness
+              </strong>
             </div>
-
-            <div className="space-y-4">
-              {[
-                {
-                  step: '01',
-                  title: 'Configure Your India-First Preferences',
-                  desc: 'Set INR formatting, Asia/Kolkata timezone, and notification preferences in onboarding.',
-                },
-                {
-                  step: '02',
-                  title: 'Import Statements, Bills, or Connect Gmail',
-                  desc: 'Upload CSV/XLSX statements, run local RapidOCR on bills, or authorize read-only Gmail sync.',
-                },
-                {
-                  step: '03',
-                  title: 'Track Cashflow, Forecasts & AI Guidance',
-                  desc: 'Monitor cash vs liabilities, dispatch scheduled reminders, and query AI with source citations.',
-                },
-              ].map((item) => (
-                <div
-                  key={item.step}
-                  className="flex gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-200/70"
-                >
-                  <span className="text-sm font-extrabold text-indigo-600 tabular-nums shrink-0">
-                    {item.step}
-                  </span>
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-900">{item.title}</h3>
-                    <p className="text-xs text-slate-600 mt-1 leading-relaxed">{item.desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={isLoading}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '7px 14px',
+                borderRadius: '999px',
+                border: '1px solid rgba(190, 255, 200, 0.25)',
+                background: 'rgba(8, 22, 14, 0.7)',
+                color: '#f1f7f2',
+                fontSize: '12px',
+                cursor: 'pointer',
+              }}
+            >
+              <RefreshCw
+                style={{ width: '14px', height: '14px' }}
+                className={isLoading ? 'animate-spin' : ''}
+              />
+              <span>Refresh</span>
+            </button>
           </div>
 
-          <div id="ai-assistant" className="lg:col-span-6">
-            <div className="rounded-2xl glass-accent p-6 sm:p-7 space-y-4">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-indigo-600 text-white">
-                  <Bot className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">
-                    Verifiable AI Finance Assistant
-                  </h3>
-                  <p className="text-xs text-slate-600">
-                    Groq inference + deterministic PostgreSQL queries + live web search
-                  </p>
-                </div>
-              </div>
-
-              <ul className="space-y-2.5 text-xs text-slate-700">
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                  <span>
-                    <strong>Clear Source Separation:</strong> Personal financial records, OCR
-                    documents, and external web research appear in distinct citation sections.
-                  </span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                  <span>
-                    <strong>Choice of Web Research Providers:</strong> Switch between LangSearch,
-                    Firecrawl, and Tavily cleanly per conversation.
-                  </span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                  <span>
-                    <strong>Draft Review or Auto-Execution:</strong> Require manual bill/OTT
-                    confirmation or enable Auto-Execute Actions cleanly from the chat header.
-                  </span>
-                </li>
-              </ul>
-
-              <div className="pt-2">
-                <button
-                  type="button"
-                  onClick={() => onNavigate(isAuthenticated ? 'assistant' : 'register')}
-                  className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-700 hover:text-indigo-900"
-                >
-                  <span>Try AI Assistant</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
+          {error && !backendReachable && (
+            <div
+              role="alert"
+              style={{
+                marginBottom: '14px',
+                padding: '12px 16px',
+                borderRadius: '14px',
+                border: '1px solid rgba(251, 113, 133, 0.45)',
+                background: 'rgba(136, 19, 55, 0.35)',
+                fontSize: '12px',
+                color: '#ffe4e6',
+              }}
+            >
+              <strong style={{ display: 'block' }}>Backend API Unreachable</strong>
+              <span>The React frontend could not connect to FastAPI: {error}</span>
             </div>
-          </div>
-        </div>
-      </section>
+          )}
 
-      {/* Security & Live Platform Foundation / System Readiness */}
-      <section id="security" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 space-y-8">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          {/* Security Engineering Commitments */}
-          <div className="lg:col-span-6 space-y-4">
-            <p className="text-xs font-bold uppercase tracking-widest text-indigo-600">
-              Engineering & Privacy Controls
-            </p>
-            <h2 className="text-2xl font-bold text-slate-900">
-              Built for multi-tenant isolation & verifiable state
-            </h2>
-            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-              Every API route validates session cookies, enforces CSRF protection on state-changing
-              calls, scopes queries strictly by authenticated `user_id`, and stores credentials using
-              Argon2id hashing and encrypted OAuth tokens.
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-              {[
-                { icon: Lock, label: 'HttpOnly Sessions + CSRF', sub: 'Double-submit token enforcement' },
-                { icon: ShieldCheck, label: 'Argon2id Passwords', sub: 'Modern memory-hard hashing' },
-                { icon: MailCheck, label: 'Scoped Gmail Read-Only', sub: 'Strict OAuth state & PKCE verification' },
-                { icon: FileText, label: 'Private Document Vault', sub: 'No unauthenticated direct URLs' },
-              ].map((s) => {
-                const Icon = s.icon;
-                return (
-                  <div key={s.label} className="rounded-xl bg-white border border-slate-200 p-3.5 shadow-card">
-                    <div className="flex items-center gap-2 text-slate-900 font-semibold text-xs">
-                      <Icon className="w-4 h-4 text-indigo-600" />
-                      <span>{s.label}</span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 mt-1">{s.sub}</p>
-                  </div>
-                );
-              })}
+          {backendReachable && readiness && !databaseReady && (
+            <div
+              role="alert"
+              style={{
+                marginBottom: '14px',
+                padding: '12px 16px',
+                borderRadius: '14px',
+                border: '1px solid rgba(251, 191, 36, 0.45)',
+                background: 'rgba(120, 53, 15, 0.35)',
+                fontSize: '12px',
+                color: '#fef3c7',
+              }}
+            >
+              <strong style={{ display: 'block' }}>Database Degraded / Unreachable</strong>
+              <span>
+                FastAPI is responding, but the PostgreSQL readiness check failed:{' '}
+                {readiness.database.error || 'Unknown error'}
+              </span>
             </div>
-          </div>
+          )}
 
-          {/* Live System Foundation & Readiness Panel (Preserves Phase 0 Health Readout cleanly) */}
-          <div className="lg:col-span-6">
-            <div className="rounded-2xl bg-white border border-slate-200 shadow-card p-5 sm:p-6 space-y-4">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-indigo-600">
-                    System Foundation
-                  </span>
-                  <h3 className="text-base font-bold text-slate-900">Live Backend & Database Readiness</h3>
-                </div>
-                <button
-                  type="button"
-                  onClick={onRefresh}
-                  disabled={isLoading}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-xs font-semibold text-slate-700"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-                  <span>Refresh</span>
-                </button>
-              </div>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+              gap: '12px',
+              fontSize: '12px',
+            }}
+          >
+            <div
+              style={{
+                padding: '12px 14px',
+                borderRadius: '14px',
+                border: '1px solid rgba(190, 255, 200, 0.12)',
+                background: 'rgba(255, 255, 255, 0.03)',
+              }}
+            >
+              <span style={{ color: '#9db5a4', display: 'block' }}>FastAPI Service</span>
+              <strong style={{ color: '#f1f7f2', fontWeight: 500 }}>
+                {isLoading
+                  ? 'Checking connection...'
+                  : backendReachable
+                  ? `Connected (${health?.version || 'live'})`
+                  : 'Offline'}
+              </strong>
+            </div>
 
-              {error && !backendReachable && (
-                <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 flex items-start gap-2.5">
-                  <XCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                  <div className="text-xs">
-                    <p className="font-bold text-rose-900">Backend API Unreachable</p>
-                    <p className="text-rose-700 mt-0.5">
-                      The React frontend could not connect to FastAPI: {error}
-                    </p>
-                  </div>
-                </div>
-              )}
+            <div
+              style={{
+                padding: '12px 14px',
+                borderRadius: '14px',
+                border: '1px solid rgba(190, 255, 200, 0.12)',
+                background: 'rgba(255, 255, 255, 0.03)',
+              }}
+            >
+              <span style={{ color: '#9db5a4', display: 'block' }}>PostgreSQL Engine</span>
+              <strong style={{ color: '#f1f7f2', fontWeight: 500 }}>
+                {isLoading
+                  ? 'Checking readiness...'
+                  : databaseReady
+                  ? `Ready (${readiness?.database.latency_ms ?? 0} ms)`
+                  : 'Disconnected'}
+              </strong>
+            </div>
 
-              {backendReachable && readiness && !databaseReady && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-2.5">
-                  <XCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                  <div className="text-xs">
-                    <p className="font-bold text-amber-900">Database Degraded / Unreachable</p>
-                    <p className="text-amber-800 mt-0.5">
-                      FastAPI is responding, but the PostgreSQL readiness check failed:{' '}
-                      {readiness.database.error || 'Unknown error'}
-                    </p>
-                  </div>
-                </div>
-              )}
+            <div
+              style={{
+                padding: '12px 14px',
+                borderRadius: '14px',
+                border: '1px solid rgba(190, 255, 200, 0.12)',
+                background: 'rgba(255, 255, 255, 0.03)',
+              }}
+            >
+              <span style={{ color: '#9db5a4', display: 'block' }}>Primary Currency</span>
+              <strong style={{ color: '#f1f7f2', fontWeight: 500 }}>
+                {platform?.primary_currency === 'INR'
+                  ? 'INR (Indian Rupee)'
+                  : platform?.primary_currency || 'INR (Indian Rupee)'}
+              </strong>
+            </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                <div className="rounded-xl bg-slate-50 border border-slate-200/80 p-3.5">
-                  <span className="text-slate-500 flex items-center gap-1.5 font-medium">
-                    <Server className="w-3.5 h-3.5 text-indigo-600" />
-                    FastAPI Service
-                  </span>
-                  <p className="mt-1 font-bold text-slate-900">
-                    {isLoading
-                      ? 'Checking connection...'
-                      : backendReachable
-                      ? `Connected (${health?.version || 'live'})`
-                      : 'Offline'}
-                  </p>
-                </div>
-
-                <div className="rounded-xl bg-slate-50 border border-slate-200/80 p-3.5">
-                  <span className="text-slate-500 flex items-center gap-1.5 font-medium">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                    PostgreSQL Engine
-                  </span>
-                  <p className="mt-1 font-bold text-slate-900">
-                    {isLoading
-                      ? 'Checking readiness...'
-                      : databaseReady
-                      ? `Ready (${readiness?.database.latency_ms ?? 0} ms)`
-                      : 'Disconnected'}
-                  </p>
-                </div>
-
-                <div className="rounded-xl bg-slate-50 border border-slate-200/80 p-3.5">
-                  <span className="text-slate-500 font-medium">Primary Currency</span>
-                  <p className="mt-1 font-bold text-slate-900">
-                    {platform?.primary_currency === 'INR' ? 'INR (Indian Rupee)' : platform?.primary_currency || 'INR (Indian Rupee)'}
-                  </p>
-                </div>
-
-                <div className="rounded-xl bg-slate-50 border border-slate-200/80 p-3.5">
-                  <span className="text-slate-500 font-medium">Fiscal Year Cycle</span>
-                  <p className="mt-1 font-bold text-slate-900">
-                    {platform?.fiscal_year_cycle === 'April - March'
-                      ? 'April 1 – March 31'
-                      : platform?.fiscal_year_cycle || 'April 1 – March 31'}
-                  </p>
-                </div>
-              </div>
+            <div
+              style={{
+                padding: '12px 14px',
+                borderRadius: '14px',
+                border: '1px solid rgba(190, 255, 200, 0.12)',
+                background: 'rgba(255, 255, 255, 0.03)',
+              }}
+            >
+              <span style={{ color: '#9db5a4', display: 'block' }}>Fiscal Year Cycle</span>
+              <strong style={{ color: '#f1f7f2', fontWeight: 500 }}>
+                {platform?.fiscal_year_cycle === 'April - March'
+                  ? 'April 1 – March 31'
+                  : platform?.fiscal_year_cycle || 'April 1 – March 31'}
+              </strong>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Final CTA & Footer */}
-      <footer className="bg-navy-900 text-slate-300 border-t border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white font-bold flex items-center justify-center">
-              ₹
-            </div>
-            <span>AI Personal Finance Manager — India-First SaaS Workspace</span>
-          </div>
-          <div className="flex items-center gap-5 text-slate-400">
-            <button type="button" onClick={() => onNavigate('login')} className="hover:text-white">
+      <div className="fs-band">
+        <div>
+          <h2>Ready to organize every account, bill, EMI, and rupee in one place?</h2>
+          <a
+            className="fs-cta"
+            href={isAuthenticated ? '/dashboard' : '/register'}
+            onClick={handleRouteClick(isAuthenticated ? 'dashboard' : 'register')}
+          >
+            {isAuthenticated ? 'Go to Dashboard' : 'Create Account'} <b>→</b>
+          </a>
+        </div>
+      </div>
+
+      <footer className="fs-footer">
+        {isAuthenticated ? (
+          <>
+            Signed in •{' '}
+            <a href="/dashboard" onClick={handleRouteClick('dashboard')}>
+              Open Dashboard
+            </a>
+          </>
+        ) : (
+          <>
+            Already registered?{' '}
+            <a href="/login" onClick={handleRouteClick('login')}>
               Sign In
-            </button>
-            <button type="button" onClick={() => onNavigate('register')} className="hover:text-white">
-              Create Account
-            </button>
-            {isAuthenticated && (
-              <button type="button" onClick={() => onNavigate('dashboard')} className="hover:text-white">
-                Dashboard
-              </button>
-            )}
-          </div>
-        </div>
+            </a>
+          </>
+        )}
       </footer>
     </div>
   );
