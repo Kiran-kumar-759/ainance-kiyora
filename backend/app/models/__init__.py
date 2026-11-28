@@ -69,6 +69,7 @@ from app.models.loans import (
     LoanInterestRateHistory,
     LoanPayment,
 )
+from app.models.onboarding import UserOnboardingState
 from app.models.subscriptions import (
     Subscription,
     SubscriptionCandidateDecision,
@@ -82,6 +83,7 @@ __all__ = [
     "Base",
     "SystemSetting",
     "User",
+    "UserOnboardingState",
     "UserSession",
     "EmailVerificationToken",
     "PasswordResetToken",

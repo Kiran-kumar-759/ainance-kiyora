@@ -15,6 +15,7 @@ from app.core.security import (
     verify_password,
 )
 from app.models.user import User
+from app.repositories.onboarding_repository import OnboardingRepository
 from app.repositories.preference_repository import PreferenceRepository
 from app.repositories.session_repository import SessionRepository
 from app.repositories.token_repository import TokenRepository
@@ -43,11 +44,13 @@ class AuthService:
         session_repo: SessionRepository | None = None,
         token_repo: TokenRepository | None = None,
         pref_repo: PreferenceRepository | None = None,
+        onboarding_repo: OnboardingRepository | None = None,
     ):
         self.user_repo = user_repo or UserRepository()
         self.session_repo = session_repo or SessionRepository()
         self.token_repo = token_repo or TokenRepository()
         self.pref_repo = pref_repo or PreferenceRepository()
+        self.onboarding_repo = onboarding_repo or OnboardingRepository()
 
     def register(
         self,
@@ -90,7 +93,7 @@ class AuthService:
             is_email_verified=False,
         )
 
-        # 5. Create Default User Preferences (India standards)
+        # 5. Create Default User Preferences (India standards) & Initial Onboarding State
         self.pref_repo.create_defaults(
             db=db,
             user_id=user.id,
@@ -99,6 +102,7 @@ class AuthService:
             timezone_str="Asia/Kolkata",
             date_format="DD/MM/YYYY",
         )
+        self.onboarding_repo.get_or_create(db, user.id, already_completed=False)
 
         # 6. Generate Verification Token
         raw_token = generate_secure_token()

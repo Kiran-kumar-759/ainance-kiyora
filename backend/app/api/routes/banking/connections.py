@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db, verify_csrf
@@ -9,16 +9,43 @@ from app.schemas.finance.account import AccountResponse
 from app.schemas.finance.banking import (
     BankingAccountImportRequest,
     BankingConnectionResponse,
+    BankingConsentDecisionRequest,
     BankingConsentRequest,
+    BankingInitiateRequest,
     BankingProviderInfo,
     BankingSyncResponse,
     BankingSyncRunResponse,
+    BankInstitutionCatalogResponse,
     DiscoveredAccountInfo,
 )
 from app.services.banking.banking_service import BankingService
 
-router = APIRouter(prefix="/banking", tags=["Simulated Banking Connections"])
+router = APIRouter(prefix="/banking", tags=["Banking Catalog & Connections"])
 banking_service = BankingService()
+
+
+@router.get(
+    "/institutions",
+    response_model=BankInstitutionCatalogResponse,
+    summary="List searchable Indian bank institution catalog",
+)
+def list_institutions(
+    search: str | None = Query(None, description="Search by bank name, short name, or IFSC code"),
+    method: str | None = Query(None, description="Filter by supported method (demo, statement_import, manual_account, account_aggregator)"),
+    category: str | None = Query(None, description="Filter by category (public_sector, private_sector, demo)"),
+    include_demo: bool = Query(True, description="Include explicitly labeled demo bank institutions"),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Returns available Indian financial institutions with logo metadata, supported connection
+    methods, and honest live vs demo availability status.
+    """
+    return banking_service.list_institutions(
+        search=search,
+        method=method,
+        category=category,
+        include_demo=include_demo,
+    )
 
 
 @router.get(
@@ -29,6 +56,40 @@ banking_service = BankingService()
 def list_providers():
     """Lists available simulated demo banking institutions with disclaimers and capabilities."""
     return banking_service.list_providers()
+
+
+@router.post(
+    "/connections/initiate",
+    response_model=BankingConnectionResponse,
+    summary="Initiate bank connection lifecycle",
+)
+def initiate_connection(
+    req: BankingInitiateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(verify_csrf),
+):
+    """
+    Validates selected institution against provider availability and initiates a consented
+    or awaiting_consent banking connection. Live Account Aggregator banks return 503 if unconfigured.
+    """
+    return banking_service.initiate_connection(db, current_user, req)
+
+
+@router.post(
+    "/connections/{connection_id}/consent",
+    response_model=BankingConnectionResponse,
+    summary="Grant or decline banking data consent",
+)
+def submit_connection_consent(
+    connection_id: uuid.UUID,
+    req: BankingConsentDecisionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(verify_csrf),
+):
+    """Persists explicit user consent decision for an initiated banking connection."""
+    return banking_service.submit_consent(db, current_user, connection_id, req)
 
 
 @router.post(
@@ -145,3 +206,18 @@ def disconnect_connection(
 ):
     """Disconnects the simulated provider connection. Existing imported data is preserved."""
     return banking_service.disconnect_connection(db, current_user, connection_id)
+
+
+@router.post(
+    "/connections/{connection_id}/revoke",
+    response_model=BankingConnectionResponse,
+    summary="Revoke banking consent and deactivate feed",
+)
+def revoke_connection(
+    connection_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: None = Depends(verify_csrf),
+):
+    """Revokes consent on a banking connection and deactivates synced provider accounts."""
+    return banking_service.revoke_connection(db, current_user, connection_id)

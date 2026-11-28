@@ -4,11 +4,17 @@ import uuid
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models.finance import BankingConnection, BankingSyncRun
 from app.models.user import User
 from app.providers.banking.demo_provider import (
     get_all_demo_providers,
     get_demo_provider,
+)
+from app.providers.banking.institution_catalog import (
+    BankInstitutionEntry,
+    get_bank_institution,
+    list_bank_institutions,
 )
 from app.repositories.finance.account_repository import AccountRepository
 from app.repositories.finance.banking_repository import BankingRepository
@@ -18,10 +24,14 @@ from app.schemas.finance.account import AccountCreateRequest, AccountResponse
 from app.schemas.finance.banking import (
     BankingAccountImportRequest,
     BankingConnectionResponse,
+    BankingConsentDecisionRequest,
     BankingConsentRequest,
+    BankingInitiateRequest,
     BankingProviderInfo,
     BankingSyncResponse,
     BankingSyncRunResponse,
+    BankInstitutionCatalogResponse,
+    BankInstitutionResponse,
     DiscoveredAccountInfo,
 )
 from app.services.finance.account_service import AccountService
@@ -29,8 +39,28 @@ from app.services.finance.category_service import CategoryService
 from app.services.finance.transaction_service import TransactionService
 
 
+def _institution_to_response(entry: BankInstitutionEntry) -> BankInstitutionResponse:
+    return BankInstitutionResponse(
+        bank_id=entry.bank_id,
+        bank_name=entry.bank_name,
+        short_name=entry.short_name,
+        bank_code=entry.bank_code,
+        category=entry.category,
+        logo_key=entry.logo_key,
+        logo_url=entry.logo_url,
+        supported_connection_methods=list(entry.supported_connection_methods),
+        provider_id=entry.provider_id,
+        provider_available=entry.provider_available,
+        live_supported=entry.live_supported,
+        is_demo=entry.is_demo,
+        connection_availability_status=entry.connection_availability_status,
+        description=entry.description,
+        unavailable_reason=entry.unavailable_reason,
+    )
+
+
 class BankingService:
-    """Service managing simulated banking connections, account discovery, and idempotent sync."""
+    """Service managing Indian bank catalog, consent lifecycle, account discovery, and idempotent sync."""
 
     def __init__(self):
         self.banking_repo = BankingRepository()
@@ -43,6 +73,27 @@ class BankingService:
 
     def list_providers(self) -> list[BankingProviderInfo]:
         return get_all_demo_providers()
+
+    def list_institutions(
+        self,
+        *,
+        search: str | None = None,
+        method: str | None = None,
+        category: str | None = None,
+        include_demo: bool = True,
+    ) -> BankInstitutionCatalogResponse:
+        entries = list_bank_institutions(
+            search=search,
+            method=method,
+            category=category,
+            include_demo=include_demo,
+        )
+        return BankInstitutionCatalogResponse(
+            institutions=[_institution_to_response(item) for item in entries],
+            total=len(entries),
+            live_aa_configured=bool(settings.ACCOUNT_AGGREGATOR_ENABLED),
+            demo_available=True,
+        )
 
     def _count_connected_accounts(
         self, db: Session, user: User, institution_name: str
@@ -63,6 +114,120 @@ class BankingService:
         )
         return resp
 
+    def initiate_connection(
+        self, db: Session, user: User, req: BankingInitiateRequest
+    ) -> BankingConnectionResponse:
+        """
+        Initiates or resumes a bank connection attempt after validating bank support
+        and live provider availability. Never fabricates live bank connections.
+        """
+        institution = get_bank_institution(req.bank_id)
+        if not institution:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Unknown bank institution: {req.bank_id}",
+            )
+
+        if not institution.is_demo:
+            if not institution.live_supported or not settings.ACCOUNT_AGGREGATOR_ENABLED:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=(
+                        f"Live Account Aggregator connection for {institution.bank_name} is not configured in this release. "
+                        "Use CSV/XLSX bank statement import, manual account creation, or connect a labeled Demo Bank institution."
+                    ),
+                )
+
+        if req.connection_method != "demo" and institution.is_demo:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"{institution.bank_name} only supports the 'demo' simulated connection method.",
+            )
+
+        provider = get_demo_provider(institution.provider_id)
+        provider_info = provider.get_info()
+        now = dt.datetime.now(dt.UTC)
+        target_status = "connected" if req.consent_given else "pending"
+        target_state = "accounts_discovered" if req.consent_given else "awaiting_consent"
+
+        try:
+            existing = self.banking_repo.get_connection_by_provider(
+                db, user.id, institution.provider_id
+            )
+            if existing:
+                existing.bank_id = institution.bank_id
+                existing.connection_method = req.connection_method
+                existing.status = target_status
+                existing.lifecycle_state = target_state
+                existing.last_error = None
+                existing.revoked_at = None
+                if req.consent_given:
+                    existing.consent_granted_at = now
+                self.banking_repo.update_connection(db, existing)
+                db.commit()
+                db.refresh(existing)
+                return self._to_connection_response(db, user, existing)
+
+            conn = BankingConnection(
+                user_id=user.id,
+                provider_id=institution.provider_id,
+                bank_id=institution.bank_id,
+                connection_method=req.connection_method,
+                institution_name=provider_info.name,
+                status=target_status,
+                lifecycle_state=target_state,
+                consent_granted_at=now,
+                consent_scope="accounts,transactions",
+                is_simulated=True,
+            )
+            self.banking_repo.create_connection(db, conn)
+            db.commit()
+            db.refresh(conn)
+            return self._to_connection_response(db, user, conn)
+        except Exception:
+            db.rollback()
+            raise
+
+    def submit_consent(
+        self,
+        db: Session,
+        user: User,
+        connection_id: uuid.UUID,
+        req: BankingConsentDecisionRequest,
+    ) -> BankingConnectionResponse:
+        """Persists user consent decision for a initiated banking connection."""
+        conn = self.banking_repo.get_connection_by_id(db, connection_id, user.id)
+        if not conn:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Banking connection not found.",
+            )
+        if conn.status == "revoked" or conn.lifecycle_state == "revoked":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Revoked banking connections must be re-initiated before granting consent.",
+            )
+
+        now = dt.datetime.now(dt.UTC)
+        try:
+            if req.consent_given:
+                conn.status = "connected"
+                conn.lifecycle_state = "accounts_discovered"
+                conn.consent_granted_at = now
+                conn.consent_scope = req.consent_scope
+                conn.last_error = None
+            else:
+                conn.status = "disconnected"
+                conn.lifecycle_state = "failed"
+                conn.last_error = "User declined data access consent."
+            self.banking_repo.update_connection(db, conn)
+            db.commit()
+            db.refresh(conn)
+            return self._to_connection_response(db, user, conn)
+        except Exception:
+            db.rollback()
+            raise
+
     def create_demo_connection(
         self, db: Session, user: User, req: BankingConsentRequest
     ) -> BankingConnectionResponse:
@@ -81,12 +246,18 @@ class BankingService:
             )
 
         provider_info = provider.get_info()
+        now = dt.datetime.now(dt.UTC)
 
         try:
             existing = self.banking_repo.get_connection_by_provider(db, user.id, req.provider_id)
             if existing:
+                existing.bank_id = req.provider_id
+                existing.connection_method = "demo"
                 existing.status = "connected"
-                existing.consent_granted_at = dt.datetime.now(dt.UTC)
+                existing.lifecycle_state = "connected"
+                existing.last_error = None
+                existing.revoked_at = None
+                existing.consent_granted_at = now
                 self.banking_repo.update_connection(db, existing)
                 db.commit()
                 db.refresh(existing)
@@ -95,9 +266,12 @@ class BankingService:
             conn = BankingConnection(
                 user_id=user.id,
                 provider_id=req.provider_id,
+                bank_id=req.provider_id,
+                connection_method="demo",
                 institution_name=provider_info.name,
                 status="connected",
-                consent_granted_at=dt.datetime.now(dt.UTC),
+                lifecycle_state="connected",
+                consent_granted_at=now,
                 consent_scope="accounts,transactions",
                 is_simulated=True,
             )
@@ -147,13 +321,12 @@ class BankingService:
         if conn.status != "connected":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cannot discover accounts on a disconnected banking connection.",
+                detail="Cannot discover accounts until banking connection is consented and active.",
             )
 
         provider = get_demo_provider(conn.provider_id)
         discovered = provider.discover_accounts(str(conn.id), str(user.id))
 
-        # Check existing imported accounts
         existing_accounts = self.account_repo.list_by_user(db, user.id, include_archived=True)
         existing_identifiers = {
             a.account_identifier
@@ -164,6 +337,11 @@ class BankingService:
         for acc in discovered:
             if acc.masked_account_number in existing_identifiers:
                 acc.already_imported = True
+
+        if conn.lifecycle_state in {"initiated", "awaiting_consent", "accounts_discovered"}:
+            conn.lifecycle_state = "awaiting_account_selection"
+            self.banking_repo.update_connection(db, conn)
+            db.commit()
 
         return discovered
 
@@ -183,14 +361,13 @@ class BankingService:
         if conn.status != "connected":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cannot import accounts from a disconnected banking connection.",
+                detail="Cannot import accounts from an inactive banking connection.",
             )
 
         provider = get_demo_provider(conn.provider_id)
         discovered = provider.discover_accounts(str(conn.id), str(user.id))
         discovered_map = {acc.external_account_id: acc for acc in discovered}
 
-        # Validate all requested account IDs up front before modifying DB
         unique_ids = list(dict.fromkeys(req.account_ids))
         for ext_id in unique_ids:
             if ext_id not in discovered_map:
@@ -213,9 +390,7 @@ class BankingService:
                 existing_acc = accounts_by_identifier.get(acc_info.masked_account_number)
                 if existing_acc:
                     if existing_acc.status != "disconnected":
-                        # Already actively imported - idempotent skip
                         continue
-                    # Reconnect previously disconnected account
                     existing_acc.status = "active"
                     self.account_repo.update(db, existing_acc)
                     imported.append(AccountResponse.model_validate(existing_acc))
@@ -234,11 +409,18 @@ class BankingService:
                 )
                 imported.append(new_acc)
 
+            conn.lifecycle_state = "connected"
+            conn.last_error = None
+            self.banking_repo.update_connection(db, conn)
             db.commit()
-            return imported
         except Exception:
             db.rollback()
             raise
+
+        if req.trigger_initial_sync:
+            self.sync_connection(db, user, connection_id)
+
+        return imported
 
     def sync_connection(
         self, db: Session, user: User, connection_id: uuid.UUID
@@ -252,23 +434,23 @@ class BankingService:
         if conn.status != "connected":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cannot synchronize a disconnected banking connection.",
+                detail="Cannot synchronize an inactive or disconnected banking connection.",
             )
 
         provider = get_demo_provider(conn.provider_id)
+        conn.lifecycle_state = "synchronizing"
+        self.banking_repo.update_connection(db, conn)
+
+        sync_run = BankingSyncRun(
+            connection_id=conn.id,
+            user_id=user.id,
+            status="success",
+        )
+        self.banking_repo.create_sync_run(db, sync_run)
 
         try:
-            sync_run = BankingSyncRun(
-                connection_id=conn.id,
-                user_id=user.id,
-                status="success",
-            )
-            self.banking_repo.create_sync_run(db, sync_run)
-
-            # Ensure system categories are seeded within the atomic unit of work
             self.category_service.seed_default_categories(db, commit=False)
 
-            # Find user's imported accounts for this provider
             user_accounts = self.account_repo.list_by_user(db, user.id, include_archived=False)
             target_accounts = [
                 a
@@ -296,7 +478,6 @@ class BankingService:
 
                 for tx_data in raw_txs:
                     ext_ref = tx_data["external_reference"]
-                    # Idempotency check: verify if external_reference already exists for this account
                     existing_tx = self.transaction_repo.get_by_external_reference(
                         db=db,
                         user_id=user.id,
@@ -338,6 +519,8 @@ class BankingService:
 
             now = dt.datetime.now(dt.UTC)
             conn.last_sync_at = now
+            conn.lifecycle_state = "connected"
+            conn.last_error = None
             self.banking_repo.update_connection(db, conn)
 
             sync_run.accounts_synced = total_accounts_synced
@@ -356,13 +539,32 @@ class BankingService:
             return BankingSyncResponse(
                 connection_id=conn.id,
                 status="success",
+                lifecycle_state="connected",
                 accounts_synced=total_accounts_synced,
                 transactions_synced=total_tx_synced,
                 synced_at=now,
                 message=message,
             )
-        except Exception:
+        except Exception as exc:
             db.rollback()
+            now = dt.datetime.now(dt.UTC)
+            err_conn = self.banking_repo.get_connection_by_id(db, connection_id, user.id)
+            if err_conn:
+                err_conn.status = "error"
+                err_conn.lifecycle_state = "failed"
+                err_conn.last_error = str(exc)[:500]
+                self.banking_repo.update_connection(db, err_conn)
+                failed_run = BankingSyncRun(
+                    connection_id=err_conn.id,
+                    user_id=user.id,
+                    status="failed",
+                    accounts_synced=0,
+                    transactions_synced=0,
+                    error_message=str(exc)[:500],
+                    completed_at=now,
+                )
+                self.banking_repo.create_sync_run(db, failed_run)
+                db.commit()
             raise
 
     def list_sync_runs(
@@ -377,8 +579,8 @@ class BankingService:
         runs = self.banking_repo.list_sync_runs(db, conn.id, user.id, limit=limit)
         return [BankingSyncRunResponse.model_validate(r) for r in runs]
 
-    def disconnect_connection(
-        self, db: Session, user: User, connection_id: uuid.UUID
+    def _deactivate_connection_with_state(
+        self, db: Session, user: User, connection_id: uuid.UUID, *, revoke: bool
     ) -> BankingConnectionResponse:
         conn = self.banking_repo.get_connection_by_id(db, connection_id, user.id)
         if not conn:
@@ -386,12 +588,14 @@ class BankingService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Banking connection not found.",
             )
+        now = dt.datetime.now(dt.UTC)
         try:
-            conn.status = "disconnected"
+            conn.status = "revoked" if revoke else "disconnected"
+            conn.lifecycle_state = "revoked" if revoke else "disconnected"
+            if revoke:
+                conn.revoked_at = now
             self.banking_repo.update_connection(db, conn)
 
-            # Deactivate all demo accounts belonging to this disconnected institution
-            # so they no longer reflect on Dashboard, Accounts, or Transactions.
             demo_accounts = self.account_repo.list_demo_accounts_by_institution(
                 db, user.id, conn.institution_name
             )
@@ -406,3 +610,13 @@ class BankingService:
         except Exception:
             db.rollback()
             raise
+
+    def disconnect_connection(
+        self, db: Session, user: User, connection_id: uuid.UUID
+    ) -> BankingConnectionResponse:
+        return self._deactivate_connection_with_state(db, user, connection_id, revoke=False)
+
+    def revoke_connection(
+        self, db: Session, user: User, connection_id: uuid.UUID
+    ) -> BankingConnectionResponse:
+        return self._deactivate_connection_with_state(db, user, connection_id, revoke=True)

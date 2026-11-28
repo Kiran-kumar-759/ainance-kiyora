@@ -1,7 +1,7 @@
 import datetime as dt
 import uuid
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
@@ -31,9 +31,18 @@ def get_analytics_dashboard(
     ),
     start_date: dt.date | None = Query(None),
     end_date: dt.date | None = Query(None),
+    enforce_onboarding: bool = Query(
+        False,
+        description="When true, rejects access with 403 until user onboarding is completed",
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if enforce_onboarding and not current_user.onboarding_completed:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Onboarding must be completed before accessing the dashboard.",
+        )
     return analytics_service.get_analytics_dashboard(
         db=db,
         user=current_user,

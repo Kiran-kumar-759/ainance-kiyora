@@ -22,6 +22,7 @@ if TYPE_CHECKING:
         FinancialTransfer,
         LedgerJournal,
     )
+    from app.models.onboarding import UserOnboardingState
 
 
 class User(Base):
@@ -100,5 +101,11 @@ class User(Base):
     banking_connections: Mapped[list["BankingConnection"]] = relationship(
         "BankingConnection",
         back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    onboarding_state: Mapped["UserOnboardingState | None"] = relationship(
+        "UserOnboardingState",
+        back_populates="user",
+        uselist=False,
         cascade="all, delete-orphan",
     )

@@ -408,10 +408,17 @@ class BankingConnection(Base):
     provider_id: Mapped[str] = mapped_column(
         String(50), index=True, nullable=False
     )  # demo_national_bank, demo_private_bank, demo_digital_bank
+    bank_id: Mapped[str | None] = mapped_column(String(60), index=True, nullable=True)
+    connection_method: Mapped[str] = mapped_column(
+        String(30), default="demo", nullable=False
+    )  # demo, account_aggregator, manual
     institution_name: Mapped[str] = mapped_column(String(100), nullable=False)
     status: Mapped[str] = mapped_column(
         String(20), default="connected", nullable=False
-    )  # connected, disconnected, error
+    )  # pending, connected, disconnected, revoked, error
+    lifecycle_state: Mapped[str] = mapped_column(
+        String(40), default="connected", nullable=False
+    )  # not_connected, initiated, awaiting_consent, accounts_discovered, awaiting_account_selection, synchronizing, connected, failed, disconnected, revoked
     consent_granted_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: dt.datetime.now(dt.UTC),
@@ -422,6 +429,8 @@ class BankingConnection(Base):
     )
     is_simulated: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     last_sync_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    revoked_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: dt.datetime.now(dt.UTC),

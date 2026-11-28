@@ -129,6 +129,9 @@ class Settings(BaseSettings):
     )
     EMAIL_SYNC_MAX_MESSAGES: int = 25
 
+    # Banking / Account Aggregator Provider Settings
+    ACCOUNT_AGGREGATOR_ENABLED: bool = False
+
     # Incoming SMS Ingestion Boundary (Phase 7 - disabled unless supported source configured)
     SMS_INGESTION_ENABLED: bool = False
     SMS_INGESTION_PROVIDER: str = "none"
