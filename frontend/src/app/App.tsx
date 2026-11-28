@@ -10,8 +10,7 @@ import {
   syncBrowserUrl,
 } from '../lib/routes';
 import { LandingPage } from '../pages/landing/LandingPage';
-import { LoginPage } from '../pages/auth/LoginPage';
-import { RegisterPage } from '../pages/auth/RegisterPage';
+import { AuthPortalPage } from '../pages/auth/AuthPortalPage';
 import { ForgotPasswordPage } from '../pages/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from '../pages/auth/ResetPasswordPage';
 import { VerifyEmailPage } from '../pages/auth/VerifyEmailPage';
@@ -272,16 +271,16 @@ const AppContent: React.FC = () => {
       case 'settings':
         return <SettingsPage onNavigate={handleNavigate} />;
       case 'login':
+      case 'register':
         return (
-          <LoginPage
+          <AuthPortalPage
+            mode={currentView === 'register' ? 'register' : 'login'}
             onNavigate={handleNavigate}
             onSuccess={() =>
               handleNavigate(user && user.onboarding_completed === false ? 'onboarding' : 'dashboard')
             }
           />
         );
-      case 'register':
-        return <RegisterPage onNavigate={handleNavigate} />;
       case 'forgot-password':
         return <ForgotPasswordPage onNavigate={handleNavigate} />;
       case 'reset-password':

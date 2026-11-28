@@ -53,18 +53,18 @@ describe('Frontend Authentication and User Management Pages', () => {
       </AuthProvider>
     );
 
-    expect(screen.getByText(/Sign in to your account/i)).toBeInTheDocument();
-    fireEvent.change(screen.getByPlaceholderText(/name@example.in/i), { target: { value: 'user@example.in' } });
-    fireEvent.change(screen.getByPlaceholderText(/••••••••/i), { target: { value: 'wrongpass' } });
+    expect(screen.getByText(/Welcome Back/i)).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText(/Enter your email address/i), { target: { value: 'user@example.in' } });
+    fireEvent.change(screen.getByPlaceholderText(/Enter your password/i), { target: { value: 'wrongpass' } });
 
-    fireEvent.click(screen.getByRole('button', { name: /Sign in/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Sign In/i }));
 
     await waitFor(() => {
       expect(screen.getByText(/Invalid email or password/i)).toBeInTheDocument();
     });
   });
 
-  it('renders registration form and validates password match', async () => {
+  it('renders registration form and validates first name, last name, email, and min 8-char password', async () => {
     const onNavigate = vi.fn();
     render(
       <AuthProvider>
@@ -72,17 +72,17 @@ describe('Frontend Authentication and User Management Pages', () => {
       </AuthProvider>
     );
 
-    expect(screen.getByText(/Create your account/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Create Account/i })).toBeInTheDocument();
 
-    fireEvent.change(screen.getByPlaceholderText(/e.g. Aarav Sharma/i), { target: { value: 'Test User' } });
-    fireEvent.change(screen.getByPlaceholderText(/name@example.in/i), { target: { value: 'test@example.in' } });
-    fireEvent.change(screen.getByPlaceholderText(/Minimum 8 characters/i), { target: { value: 'password123' } });
-    fireEvent.change(screen.getByPlaceholderText(/Re-enter password/i), { target: { value: 'mismatch123' } });
+    fireEvent.change(screen.getByPlaceholderText(/Enter your first name/i), { target: { value: 'Aarav' } });
+    fireEvent.change(screen.getByPlaceholderText(/Enter your last name/i), { target: { value: 'Sharma' } });
+    fireEvent.change(screen.getByPlaceholderText(/Enter your email address/i), { target: { value: 'test@example.in' } });
+    fireEvent.change(screen.getByPlaceholderText(/Create a password/i), { target: { value: 'short' } });
 
     fireEvent.click(screen.getByRole('button', { name: /Create Account/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/Passwords do not match/i)).toBeInTheDocument();
+      expect(screen.getByText(/Use at least 8 characters/i)).toBeInTheDocument();
     });
   });
 
