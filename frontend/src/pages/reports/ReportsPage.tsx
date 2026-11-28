@@ -16,12 +16,13 @@ import {
 } from '../../types/analytics';
 import { formatDate, formatINR } from '../../lib/formatters';
 import { DASHBOARD_PERIOD_OPTIONS } from '../../components/analytics/PeriodFilterBar';
+import { WorkspaceStarterBanner } from '../../components/finance/WorkspaceStarterBanner';
 
 interface ReportsPageProps {
   onNavigate: (view: string) => void;
 }
 
-export const ReportsPage: React.FC<ReportsPageProps> = () => {
+export const ReportsPage: React.FC<ReportsPageProps> = ({ onNavigate }) => {
   const [definitions, setDefinitions] = useState<ReportDefinition[]>([]);
   const [reportType, setReportType] = useState<ReportType>('monthly_summary');
   const [period, setPeriod] = useState<string>('this_month');
@@ -315,6 +316,14 @@ export const ReportsPage: React.FC<ReportsPageProps> = () => {
             Retry
           </button>
         </div>
+      )}
+
+      {!isLoading && accounts.length === 0 && (
+        <WorkspaceStarterBanner
+          title="No accounts or statements recorded yet"
+          description="Connect a bank account, add a manual account, or upload a CSV/XLSX statement so your financial reports and CSV exports reflect real ledger entries."
+          onNavigate={onNavigate}
+        />
       )}
 
       {/* Printable Report Sheet */}

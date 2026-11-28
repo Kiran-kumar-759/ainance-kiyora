@@ -421,13 +421,33 @@ export const SubscriptionsPage: React.FC<SubscriptionsPageProps> = ({ onNavigate
                 Loading subscriptions...
               </div>
             ) : subs.length === 0 ? (
-              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-10 text-center text-xs">
-                <CreditCard className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-10 text-center text-xs space-y-3">
+                <CreditCard className="w-10 h-10 text-gray-300 mx-auto" />
                 <div className="font-semibold text-gray-900">No subscriptions tracked yet</div>
-                <p className="text-gray-500 mt-1">
-                  Add Netflix, Spotify, cloud storage, or review detected candidates from your
-                  transactions.
+                <p className="text-gray-500 max-w-md mx-auto">
+                  Add Netflix, Spotify, cloud storage, or connect a bank / import statements to
+                  auto-detect recurring OTT plans.
                 </p>
+                <div className="flex flex-wrap justify-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingSub(null);
+                      setDraftSub(null);
+                      setFormOpen(true);
+                    }}
+                    className="px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold"
+                  >
+                    + Add Subscription
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('banking')}
+                    className="px-3.5 py-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold"
+                  >
+                    Connect Bank Account
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">

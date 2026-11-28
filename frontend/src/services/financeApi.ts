@@ -7,6 +7,7 @@ import {
 } from './authApi';
 import {
   AccountSummary,
+  BankInstitutionCatalog,
   BankingConnection,
   BankingProviderInfo,
   BankingSyncResponse,
@@ -308,7 +309,54 @@ export const financeApi = {
     );
   },
 
-  // Simulated Banking
+  // Banking Catalog & Connections
+  async listBankInstitutions(params?: {
+    search?: string;
+    method?: string;
+    category?: string;
+    include_demo?: boolean;
+  }): Promise<BankInstitutionCatalog> {
+    const q = new URLSearchParams();
+    if (params?.search) q.set('search', params.search);
+    if (params?.method) q.set('method', params.method);
+    if (params?.category) q.set('category', params.category);
+    if (params?.include_demo !== undefined) q.set('include_demo', String(params.include_demo));
+    const qs = q.toString() ? `?${q.toString()}` : '';
+    return financeRequest<BankInstitutionCatalog>(`/api/v1/banking/institutions${qs}`);
+  },
+
+  async initiateBankingConnection(
+    bankId: string,
+    connectionMethod: 'demo' | 'account_aggregator' = 'demo',
+    consentGiven: boolean = false
+  ): Promise<BankingConnection> {
+    return financeRequest<BankingConnection>('/api/v1/banking/connections/initiate', {
+      method: 'POST',
+      body: JSON.stringify({
+        bank_id: bankId,
+        connection_method: connectionMethod,
+        consent_given: consentGiven,
+      }),
+    });
+  },
+
+  async submitBankingConsent(
+    connectionId: string,
+    consentGiven: boolean,
+    consentScope: string = 'accounts,transactions'
+  ): Promise<BankingConnection> {
+    return financeRequest<BankingConnection>(
+      `/api/v1/banking/connections/${connectionId}/consent`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          consent_given: consentGiven,
+          consent_scope: consentScope,
+        }),
+      }
+    );
+  },
+
   async listBankingProviders(): Promise<BankingProviderInfo[]> {
     return financeRequest<BankingProviderInfo[]>('/api/v1/banking/providers');
   },
@@ -342,13 +390,17 @@ export const financeApi = {
 
   async importBankingAccounts(
     connectionId: string,
-    accountIds: string[]
+    accountIds: string[],
+    triggerInitialSync: boolean = false
   ): Promise<FinancialAccount[]> {
     return financeRequest<FinancialAccount[]>(
       `/api/v1/banking/connections/${connectionId}/accounts/import`,
       {
         method: 'POST',
-        body: JSON.stringify({ account_ids: accountIds }),
+        body: JSON.stringify({
+          account_ids: accountIds,
+          trigger_initial_sync: triggerInitialSync,
+        }),
       }
     );
   },
@@ -371,6 +423,15 @@ export const financeApi = {
   async disconnectBankingConnection(connectionId: string): Promise<BankingConnection> {
     return financeRequest<BankingConnection>(
       `/api/v1/banking/connections/${connectionId}/disconnect`,
+      {
+        method: 'POST',
+      }
+    );
+  },
+
+  async revokeBankingConnection(connectionId: string): Promise<BankingConnection> {
+    return financeRequest<BankingConnection>(
+      `/api/v1/banking/connections/${connectionId}/revoke`,
       {
         method: 'POST',
       }

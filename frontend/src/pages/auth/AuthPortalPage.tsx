@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { User } from '../../types/auth';
 import './authPortal.css';
 
 export type AuthPortalMode = 'login' | 'register';
@@ -7,7 +8,7 @@ export type AuthPortalMode = 'login' | 'register';
 interface AuthPortalPageProps {
   mode: AuthPortalMode;
   onNavigate: (view: string) => void;
-  onSuccess?: () => void;
+  onSuccess?: (user?: User) => void;
 }
 
 const MIN_PW = 8;
@@ -175,12 +176,12 @@ export const AuthPortalPage: React.FC<AuthPortalPageProps> = ({
         });
         onNavigate('login');
       } else {
-        await login(cleanEmail, password);
+        const loggedInUser = await login(cleanEmail, password);
         setPassword('');
         if (onSuccess) {
-          onSuccess();
+          onSuccess(loggedInUser);
         } else {
-          onNavigate('dashboard');
+          onNavigate(loggedInUser?.onboarding_completed === false ? 'onboarding' : 'dashboard');
         }
       }
     } catch (err: unknown) {

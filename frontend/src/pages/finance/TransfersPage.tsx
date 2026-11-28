@@ -178,15 +178,25 @@ export const TransfersPage: React.FC<TransfersPageProps> = ({ onNavigate }) => {
           )}
 
           {accounts.length < 2 ? (
-            <div className="py-8 text-center text-gray-500 text-sm">
-              <Wallet className="w-10 h-10 mx-auto text-gray-300 mb-2" />
+            <div className="py-8 text-center text-gray-500 text-sm space-y-3">
+              <Wallet className="w-10 h-10 mx-auto text-gray-300" />
               <p>You need at least two active accounts to perform a transfer.</p>
-              <button
-                onClick={() => onNavigate('accounts')}
-                className="mt-3 text-xs text-blue-600 hover:underline font-semibold"
-              >
-                + Add Another Account
-              </button>
+              <div className="flex flex-wrap justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => onNavigate('banking')}
+                  className="px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 text-xs font-semibold"
+                >
+                  Connect Bank Account
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onNavigate('accounts')}
+                  className="px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 text-xs font-semibold"
+                >
+                  + Add Another Account
+                </button>
+              </div>
             </div>
           ) : (
             <form onSubmit={handleExecuteTransfer} className="space-y-4 mt-4">

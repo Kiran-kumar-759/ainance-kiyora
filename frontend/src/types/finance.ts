@@ -119,14 +119,44 @@ export interface BankingProviderInfo {
   supported_account_types: string[];
 }
 
+export interface BankInstitution {
+  bank_id: string;
+  bank_name: string;
+  short_name: string;
+  bank_code: string;
+  category: 'public_sector' | 'private_sector' | 'neobank' | 'demo' | string;
+  logo_key: string;
+  logo_url: string;
+  supported_connection_methods: string[];
+  provider_id: string;
+  provider_available: boolean;
+  live_supported: boolean;
+  is_demo: boolean;
+  connection_availability_status: 'demo_only' | 'live_unavailable' | 'available' | string;
+  description: string;
+  unavailable_reason?: string | null;
+}
+
+export interface BankInstitutionCatalog {
+  institutions: BankInstitution[];
+  total: number;
+  live_aa_configured: boolean;
+  demo_available: boolean;
+}
+
 export interface BankingConnection {
   id: string;
   provider_id: string;
+  bank_id?: string | null;
+  connection_method?: string;
   institution_name: string;
-  status: 'connected' | 'disconnected' | 'error';
+  status: 'pending' | 'connected' | 'disconnected' | 'revoked' | 'error';
+  lifecycle_state?: string;
   consent_granted_at: string;
   is_simulated: boolean;
   last_sync_at?: string | null;
+  last_error?: string | null;
+  revoked_at?: string | null;
   created_at: string;
   connected_accounts_count: number;
 }

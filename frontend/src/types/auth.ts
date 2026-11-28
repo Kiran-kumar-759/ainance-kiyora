@@ -68,7 +68,101 @@ export interface OnboardingStatus {
   is_email_verified: boolean;
   full_name: string;
   current_step?: number;
+  current_stage?: string;
+  dashboard_access_allowed?: boolean;
   preferences: UserPreferences;
+}
+
+export type FinancialSetupMethod =
+  | 'bank_connect'
+  | 'manual_account'
+  | 'statement_import'
+  | 'document_upload'
+  | 'skip';
+
+export interface InitializationStepStatus {
+  key: string;
+  label: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'skipped' | 'failed';
+  detail?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+}
+
+export interface InitializationStatus {
+  initialization_status: 'not_started' | 'in_progress' | 'completed' | 'failed';
+  initialization_error?: string | null;
+  initialization_started_at?: string | null;
+  initialization_completed_at?: string | null;
+  steps: InitializationStepStatus[];
+  dashboard_access_allowed: boolean;
+  onboarding_completed: boolean;
+  current_stage: string;
+  summary: Record<string, string | number | boolean | null | undefined>;
+}
+
+export interface OnboardingProfileSummary {
+  first_name: string;
+  last_name: string;
+  full_name: string;
+  email: string;
+  phone_number?: string | null;
+  country: string;
+  financial_year: string;
+  monthly_budget?: string | number | null;
+  monthly_income_range?: string | null;
+  financial_goals: string[];
+}
+
+export interface OnboardingProfileRequest {
+  first_name?: string;
+  last_name?: string;
+  full_name?: string;
+  phone_number?: string;
+  preferred_currency?: string;
+  locale?: string;
+  timezone?: string;
+  date_format?: string;
+  monthly_budget?: string | number;
+  monthly_income_range?: string;
+  financial_goals?: string[];
+  notification_preferences?: Record<string, unknown>;
+}
+
+export interface OnboardingComprehensiveStatus {
+  user_id: string;
+  onboarding_completed: boolean;
+  dashboard_access_allowed: boolean;
+  required_gate_view: 'onboarding' | 'dashboard';
+  is_email_verified: boolean;
+  current_stage: string;
+  completed_stages: string[];
+  current_step: number;
+  profile_completed: boolean;
+  profile: OnboardingProfileSummary;
+  financial_setup_status: string;
+  selected_setup_method?: string | null;
+  financial_setup_skipped: boolean;
+  has_active_banking_connection: boolean;
+  accounts_count: number;
+  transactions_count: number;
+  pending_import_batches_count: number;
+  pending_documents_count: number;
+  initialization_status: 'not_started' | 'in_progress' | 'completed' | 'failed';
+  initialization_steps: InitializationStepStatus[];
+  initialization_error?: string | null;
+  next_action: string;
+  guidance_message: string;
+  preferences: UserPreferences;
+}
+
+export interface DashboardAccessResponse {
+  allowed: boolean;
+  onboarding_completed: boolean;
+  current_stage: string;
+  required_gate_view: 'onboarding' | 'dashboard';
+  next_action: string;
+  message: string;
 }
 
 export interface AuthResponse {

@@ -105,6 +105,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const { user, preferences, isAuthenticated, logout } = useAuth();
   const compactSidebar = Boolean(preferences?.notification_preferences?.compact_sidebar);
+  const onboardingLocked = Boolean(isAuthenticated && user && user.onboarding_completed === false);
   const [resendStatus, setResendStatus] = useState<string | null>(null);
   const [isResending, setIsResending] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -411,17 +412,19 @@ export const AppShell: React.FC<AppShellProps> = ({
 
   return (
     <div className="min-h-screen flex bg-slate-50 text-slate-900">
-      {/* Desktop Sidebar */}
-      <aside
-        className={`hidden lg:block shrink-0 transition-all duration-200 ${
-          sidebarCollapsed ? 'w-[72px]' : 'w-64'
-        }`}
-      >
-        <div className="sticky top-0 h-screen">{renderSidebarContent(sidebarCollapsed)}</div>
-      </aside>
+      {/* Desktop Sidebar (hidden during mandatory first-time onboarding) */}
+      {!onboardingLocked && (
+        <aside
+          className={`hidden lg:block shrink-0 transition-all duration-200 ${
+            sidebarCollapsed ? 'w-[72px]' : 'w-64'
+          }`}
+        >
+          <div className="sticky top-0 h-screen">{renderSidebarContent(sidebarCollapsed)}</div>
+        </aside>
+      )}
 
       {/* Mobile Drawer */}
-      {mobileMenuOpen && (
+      {!onboardingLocked && mobileMenuOpen && (
         <div className="fixed inset-0 z-50 lg:hidden flex">
           <div
             className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs"
@@ -438,14 +441,16 @@ export const AppShell: React.FC<AppShellProps> = ({
         {/* Sticky Glass Topbar */}
         <header className="sticky top-0 z-30 h-16 px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-3 bg-white/85 backdrop-blur-md border-b border-slate-200/80">
           <div className="flex items-center gap-3 min-w-0">
-            <button
-              type="button"
-              className="lg:hidden p-2 -ml-1.5 rounded-lg text-slate-600 hover:bg-slate-100"
-              onClick={() => setMobileMenuOpen(true)}
-              aria-label="Open navigation menu"
-            >
-              <Menu className="w-5 h-5" />
-            </button>
+            {!onboardingLocked && (
+              <button
+                type="button"
+                className="lg:hidden p-2 -ml-1.5 rounded-lg text-slate-600 hover:bg-slate-100"
+                onClick={() => setMobileMenuOpen(true)}
+                aria-label="Open navigation menu"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+            )}
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h1 className="text-sm sm:text-base font-bold text-slate-900 truncate">
@@ -474,14 +479,16 @@ export const AppShell: React.FC<AppShellProps> = ({
 
           {/* Right Controls */}
           <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => onNavigate('assistant')}
-              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-indigo-50 to-violet-50 hover:from-indigo-100 hover:to-violet-100 border border-indigo-200/80 text-indigo-700 text-xs font-semibold transition-colors"
-            >
-              <Bot className="w-3.5 h-3.5 text-indigo-600" />
-              <span>Ask AI</span>
-            </button>
+            {!onboardingLocked && (
+              <button
+                type="button"
+                onClick={() => onNavigate('assistant')}
+                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-indigo-50 to-violet-50 hover:from-indigo-100 hover:to-violet-100 border border-indigo-200/80 text-indigo-700 text-xs font-semibold transition-colors"
+              >
+                <Bot className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Ask AI</span>
+              </button>
+            )}
 
             <div className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 bg-slate-50/90 text-[11px]">
               <Server
@@ -506,7 +513,7 @@ export const AppShell: React.FC<AppShellProps> = ({
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
             </button>
 
-            {isAuthenticated && (
+            {isAuthenticated && !onboardingLocked && (
               <div className="relative">
                 <button
                   type="button"

@@ -32,6 +32,7 @@ import {
   TrendLineChart,
 } from '../../components/charts/FinanceCharts';
 import { ComparisonBadge, PeriodFilterBar } from '../../components/analytics/PeriodFilterBar';
+import { WorkspaceStarterBanner } from '../../components/finance/WorkspaceStarterBanner';
 
 interface AnalyticsPageProps {
   onNavigate: (view: string, txFilters?: TransactionNavigationFilters) => void;
@@ -243,6 +244,14 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({ onNavigate }) => {
             Retry
           </button>
         </div>
+      )}
+
+      {!isLoading && accounts.length === 0 && (
+        <WorkspaceStarterBanner
+          title="Connect your financial accounts to unlock Analytics"
+          description="Analytics charts, income vs expense breakdowns, and historical spending comparisons compute directly from your accounts and transactions."
+          onNavigate={onNavigate}
+        />
       )}
 
       {/* Analytics Tabs */}

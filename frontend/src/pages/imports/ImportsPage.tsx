@@ -26,6 +26,7 @@ import {
 import { formatDate, formatINR } from '../../lib/formatters';
 import { ColumnMappingStep } from './ColumnMappingStep';
 import { TransactionReviewStep } from './TransactionReviewStep';
+import { WorkspaceStarterBanner } from '../../components/finance/WorkspaceStarterBanner';
 
 interface ImportsPageProps {
   onNavigate: (view: string) => void;
@@ -616,6 +617,14 @@ export const ImportsPage: React.FC<ImportsPageProps> = ({ onNavigate }) => {
             Retry
           </button>
         </div>
+      )}
+
+      {!isLoading && accounts.length === 0 && (
+        <WorkspaceStarterBanner
+          title="Add or connect an account before importing a statement"
+          description="Imported CSV/XLSX transactions post directly into a destination account in your ledger. Connect a bank or create your first account below."
+          onNavigate={onNavigate}
+        />
       )}
 
       {/* Import History Table */}

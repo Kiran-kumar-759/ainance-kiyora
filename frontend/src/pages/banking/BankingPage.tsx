@@ -19,6 +19,8 @@ import {
   DiscoveredAccount,
 } from '../../types/finance';
 import { formatINR, formatDate } from '../../lib/formatters';
+import { BankCatalogSelector } from '../../components/banking/BankCatalogSelector';
+import { BankInstitution } from '../../types/finance';
 
 interface BankingPageProps {
   onNavigate: (view: string) => void;
@@ -26,6 +28,7 @@ interface BankingPageProps {
 
 export const BankingPage: React.FC<BankingPageProps> = ({ onNavigate }) => {
   const [providers, setProviders] = useState<BankingProviderInfo[]>([]);
+  const [selectedCatalogInst, setSelectedCatalogInst] = useState<BankInstitution | null>(null);
   const [connections, setConnections] = useState<BankingConnection[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -267,6 +270,28 @@ export const BankingPage: React.FC<BankingPageProps> = ({ onNavigate }) => {
           <span>{error}</span>
         </div>
       )}
+
+      {/* Searchable Indian Bank Institution Catalog */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm space-y-4">
+        <div>
+          <h2 className="text-base font-bold text-gray-900">Indian Bank &amp; Institution Directory</h2>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Search major Indian banks to check live Account Aggregator availability, upload CSV/XLSX statements, or connect a labeled demo bank.
+          </p>
+        </div>
+        <BankCatalogSelector
+          selectedBankId={selectedCatalogInst?.bank_id}
+          onSelectInstitution={(inst) => {
+            setSelectedCatalogInst(inst);
+            if (inst.is_demo) {
+              const matched = providers.find((p) => p.provider_id === inst.provider_id);
+              if (matched) handleOpenConnect(matched);
+            }
+          }}
+          onChooseManualAccount={() => onNavigate('accounts')}
+          onChooseStatementImport={() => onNavigate('imports')}
+        />
+      </div>
 
       {/* Active Connections */}
       <div className="space-y-4">

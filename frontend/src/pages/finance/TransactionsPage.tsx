@@ -23,6 +23,7 @@ import {
 import { formatINR, formatDate } from '../../lib/formatters';
 
 import { TransactionNavigationFilters } from '../../types/analytics';
+import { WorkspaceStarterBanner } from '../../components/finance/WorkspaceStarterBanner';
 
 interface TransactionsPageProps {
   onNavigate: (view: string) => void;
@@ -459,19 +460,37 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
             <p className="text-sm">Loading transactions...</p>
           </div>
         ) : transactions.length === 0 ? (
-          <div className="p-12 text-center text-gray-500">
-            <Receipt className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-            <h3 className="text-base font-semibold text-gray-900">No transactions found</h3>
-            <p className="text-sm text-gray-500 mt-1 max-w-sm mx-auto">
-              No transactions match your active filters. Try resetting the filters or record a new transaction.
-            </p>
-            <button
-              onClick={handleOpenAdd}
-              className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg shadow-sm"
-            >
-              + Record Transaction
-            </button>
-          </div>
+          accounts.length === 0 ? (
+            <div className="p-6">
+              <WorkspaceStarterBanner
+                title="No financial accounts connected yet"
+                description="Connect a bank account, add an account manually, or import a CSV/XLSX bank statement to populate your transactions ledger."
+                onNavigate={onNavigate}
+              />
+            </div>
+          ) : (
+            <div className="p-12 text-center text-gray-500">
+              <Receipt className="w-12 h-12 mx-auto text-gray-300 mb-3" />
+              <h3 className="text-base font-semibold text-gray-900">No transactions found</h3>
+              <p className="text-sm text-gray-500 mt-1 max-w-sm mx-auto">
+                No transactions match your active filters. Try resetting the filters or record a new transaction.
+              </p>
+              <div className="mt-4 flex flex-wrap justify-center gap-2">
+                <button
+                  onClick={handleOpenAdd}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg shadow-sm"
+                >
+                  + Record Transaction
+                </button>
+                <button
+                  onClick={() => onNavigate('imports')}
+                  className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-sm font-medium rounded-lg"
+                >
+                  Import Statement
+                </button>
+              </div>
+            </div>
+          )
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">

@@ -1,7 +1,11 @@
 import { config } from '../lib/config';
 import {
   AuthResponse,
+  DashboardAccessResponse,
+  InitializationStatus,
   MessageResponse,
+  OnboardingComprehensiveStatus,
+  OnboardingProfileRequest,
   OnboardingStatus,
   PrivacyDataSummary,
   User,
@@ -259,11 +263,49 @@ export const authApi = {
 
   getOnboarding: () => authRequest<OnboardingStatus>('/api/v1/onboarding'),
 
+  getComprehensiveOnboardingStatus: () =>
+    authRequest<OnboardingComprehensiveStatus>('/api/v1/onboarding/status'),
+
   updateOnboarding: (data: Partial<UserPreferences> & { full_name?: string; current_step?: number }) =>
     authRequest<OnboardingStatus>('/api/v1/onboarding', {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
+
+  saveOnboardingProfile: (data: OnboardingProfileRequest) =>
+    authRequest<OnboardingComprehensiveStatus>('/api/v1/onboarding/profile', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  selectFinancialSetupMethod: (setupMethod: string, bankId?: string) =>
+    authRequest<OnboardingComprehensiveStatus>('/api/v1/onboarding/financial-setup/select', {
+      method: 'POST',
+      body: JSON.stringify({ setup_method: setupMethod, bank_id: bankId }),
+    }),
+
+  skipFinancialSetup: (completeOnboarding: boolean = false, reason?: string) =>
+    authRequest<OnboardingComprehensiveStatus>('/api/v1/onboarding/financial-setup/skip', {
+      method: 'POST',
+      body: JSON.stringify({ complete_onboarding: completeOnboarding, reason }),
+    }),
+
+  initializeWorkspace: (force: boolean = false) =>
+    authRequest<InitializationStatus>('/api/v1/onboarding/initialize', {
+      method: 'POST',
+      body: JSON.stringify({ force }),
+    }),
+
+  retryWorkspaceInitialization: () =>
+    authRequest<InitializationStatus>('/api/v1/onboarding/initialize/retry', {
+      method: 'POST',
+    }),
+
+  getInitializationStatus: () =>
+    authRequest<InitializationStatus>('/api/v1/onboarding/initialization-status'),
+
+  checkDashboardAccess: () =>
+    authRequest<DashboardAccessResponse>('/api/v1/onboarding/dashboard-access'),
 
   completeOnboarding: () =>
     authRequest<OnboardingStatus>('/api/v1/onboarding/complete', {

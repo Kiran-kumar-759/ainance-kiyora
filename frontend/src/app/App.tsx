@@ -219,13 +219,32 @@ const AppContent: React.FC = () => {
     }
   }, [isAuthenticated, currentView, preferences, user, pendingProtectedView]);
 
-  // If unauthenticated on a protected route, remember requested path and redirect cleanly to /login
+  // Enforce authentication and onboarding gate on protected workspace routes
   useEffect(() => {
-    if (!authLoading && !isAuthenticated && PROTECTED_VIEWS.has(currentView)) {
+    if (authLoading) return;
+    if (!isAuthenticated && PROTECTED_VIEWS.has(currentView)) {
       setPendingProtectedView(currentView);
       navigateWithUrl('login', { replace: true });
+      return;
     }
-  }, [authLoading, isAuthenticated, currentView]);
+    const onboardingAllowedViews = new Set([
+      'onboarding',
+      'verify-email',
+      'profile',
+      'preferences',
+      'sessions',
+      'foundation',
+    ]);
+    if (
+      isAuthenticated &&
+      user &&
+      user.onboarding_completed === false &&
+      PROTECTED_VIEWS.has(currentView) &&
+      !onboardingAllowedViews.has(currentView)
+    ) {
+      navigateWithUrl('onboarding', { replace: true });
+    }
+  }, [authLoading, isAuthenticated, user, currentView]);
 
   const handleNavigate = (view: string, nextTxFilters?: TransactionNavigationFilters) => {
     didAutoRedirectOnAuthRef.current = true;
@@ -276,9 +295,20 @@ const AppContent: React.FC = () => {
           <AuthPortalPage
             mode={currentView === 'register' ? 'register' : 'login'}
             onNavigate={handleNavigate}
-            onSuccess={() =>
-              handleNavigate(user && user.onboarding_completed === false ? 'onboarding' : 'dashboard')
-            }
+            onSuccess={(loggedInUser) => {
+              const targetUser = loggedInUser ?? user;
+              if (targetUser && targetUser.onboarding_completed === false) {
+                handleNavigate('onboarding');
+              } else if (pendingProtectedView) {
+                const dest = pendingProtectedView;
+                setPendingProtectedView(null);
+                handleNavigate(dest);
+              } else {
+                const landing =
+                  preferences?.notification_preferences?.default_landing_view || 'dashboard';
+                handleNavigate(String(landing));
+              }
+            }}
           />
         );
       case 'forgot-password':
@@ -290,8 +320,9 @@ const AppContent: React.FC = () => {
       case 'onboarding':
         return (
           <OnboardingWizard
-            onComplete={() => {
-              handleNavigate('dashboard');
+            onNavigate={handleNavigate}
+            onComplete={(nextView?: string) => {
+              handleNavigate(nextView || 'dashboard');
             }}
           />
         );

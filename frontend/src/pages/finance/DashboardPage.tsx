@@ -348,28 +348,28 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, userNa
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {[
               {
-                title: '1. Add Bank Account',
-                desc: 'Set opening balance & separate credit cards',
-                view: 'accounts',
+                title: '1. Connect Bank Account',
+                desc: 'Search Indian banks or link simulated bank feeds',
+                view: 'banking',
                 icon: Landmark,
               },
               {
-                title: '2. Upload Statement',
+                title: '2. Add Account Manually',
+                desc: 'Set opening balance & separate credit cards',
+                view: 'accounts',
+                icon: Wallet,
+              },
+              {
+                title: '3. Upload Statement',
                 desc: 'Import HDFC/ICICI/SBI CSV or XLSX',
                 view: 'imports',
                 icon: Upload,
               },
               {
-                title: '3. Track Bills & OTT',
-                desc: 'Add recurring bills, subscriptions & EMIs',
+                title: '4. Track Bills, OTT & EMIs',
+                desc: 'Configure bills, subscriptions & reminders',
                 view: 'bills',
                 icon: CalendarClock,
-              },
-              {
-                title: '4. Configure Alerts',
-                desc: 'Manage due reminders & email sync',
-                view: 'reminders',
-                icon: BellRing,
               },
             ].map((step) => {
               const StepIcon = step.icon;
