@@ -40,6 +40,7 @@ import { Badge } from '../components/common/Badge';
 import { useAuth } from '../context/AuthContext';
 import { authApi } from '../services/authApi';
 import { billsApi } from '../services/billsApi';
+import { getPathForView } from '../lib/routes';
 import { AppNotification } from '../types/bills';
 
 interface AppShellProps {
@@ -450,6 +451,17 @@ export const AppShell: React.FC<AppShellProps> = ({
                 <h1 className="text-sm sm:text-base font-bold text-slate-900 truncate">
                   {viewMeta.title}
                 </h1>
+                <a
+                  href={getPathForView(currentView)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onNavigate(currentView);
+                  }}
+                  title={`Direct page link: ${getPathForView(currentView)}`}
+                  className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 hover:bg-indigo-50 text-slate-500 hover:text-indigo-700 font-mono text-[10px] border border-slate-200/80 transition-colors"
+                >
+                  {getPathForView(currentView)}
+                </a>
                 <Badge variant="info" className="hidden md:inline-flex">
                   {preferences?.preferred_currency || 'INR'} • {preferences?.locale || 'en-IN'}
                 </Badge>

@@ -1,9 +1,14 @@
-import React, { Suspense, lazy, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { AuthProvider, useAuth } from '../context/AuthContext';
 import { AppShell } from '../layouts/AppShell';
 import { useSystemStatus } from '../hooks/useSystemStatus';
 import { ToastProvider } from '../components/ui/ToastProvider';
 import { SkeletonCard } from '../components/ui/Primitives';
+import {
+  VIEW_DOCUMENT_TITLES,
+  getViewFromLocation,
+  syncBrowserUrl,
+} from '../lib/routes';
 import { LandingPage } from '../pages/landing/LandingPage';
 import { LoginPage } from '../pages/auth/LoginPage';
 import { RegisterPage } from '../pages/auth/RegisterPage';
@@ -139,52 +144,93 @@ const AppContent: React.FC = () => {
   } = useSystemStatus();
 
   const { user, preferences, isAuthenticated, isLoading: authLoading } = useAuth();
-  const [currentView, setCurrentView] = useState<string>('foundation');
-  const [tokenParam, setTokenParam] = useState<string>('');
-  const [txFilters, setTxFilters] = useState<TransactionNavigationFilters | null>(null);
+  const initialRoute = useRef(getViewFromLocation());
+  const [currentView, setCurrentView] = useState<string>(initialRoute.current.view);
+  const [tokenParam, setTokenParam] = useState<string>(initialRoute.current.token);
+  const [txFilters, setTxFilters] = useState<TransactionNavigationFilters | null>(
+    initialRoute.current.txFilters
+  );
+  const [pendingProtectedView, setPendingProtectedView] = useState<string | null>(() =>
+    PROTECTED_VIEWS.has(initialRoute.current.view) ? initialRoute.current.view : null
+  );
+  const didAutoRedirectOnAuthRef = useRef(false);
 
-  // When authenticated on login/register/initial load, route to onboarding (if incomplete) or landing view
+  const navigateWithUrl = (
+    view: string,
+    options: { replace?: boolean; nextTxFilters?: TransactionNavigationFilters | null } = {}
+  ) => {
+    const resolvedFilters =
+      view === 'transactions' ? options.nextTxFilters ?? null : null;
+    if (view === 'transactions') {
+      setTxFilters(resolvedFilters);
+    }
+    setCurrentView(view);
+    syncBrowserUrl(view, {
+      replace: options.replace,
+      txFilters: resolvedFilters,
+    });
+    if (typeof window !== 'undefined' && typeof window.scrollTo === 'function') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  // Keep browser document title aligned with active view
   useEffect(() => {
-    if (isAuthenticated && (currentView === 'foundation' || currentView === 'login' || currentView === 'register')) {
+    if (typeof document !== 'undefined') {
+      document.title = VIEW_DOCUMENT_TITLES[currentView] || 'FinSight AI';
+    }
+  }, [currentView]);
+
+  // Listen to browser Back / Forward buttons cleanly
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onPopState = () => {
+      const next = getViewFromLocation();
+      setTokenParam(next.token);
+      setTxFilters(next.txFilters);
+      setCurrentView(next.view);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  // When authenticated on login/register/root initial load, steer to requested view or onboarding/dashboard
+  useEffect(() => {
+    if (!isAuthenticated) {
+      didAutoRedirectOnAuthRef.current = false;
+      return;
+    }
+    const onAuthEntry =
+      currentView === 'login' ||
+      currentView === 'register' ||
+      (currentView === 'foundation' && !didAutoRedirectOnAuthRef.current);
+
+    if (onAuthEntry) {
+      didAutoRedirectOnAuthRef.current = true;
       if (user && user.onboarding_completed === false) {
-        setCurrentView('onboarding');
+        navigateWithUrl('onboarding', { replace: true });
+      } else if (pendingProtectedView) {
+        const dest = pendingProtectedView;
+        setPendingProtectedView(null);
+        navigateWithUrl(dest, { replace: true });
       } else {
         const landing = preferences?.notification_preferences?.default_landing_view || 'dashboard';
-        setCurrentView(String(landing));
+        navigateWithUrl(String(landing), { replace: true });
       }
     }
-  }, [isAuthenticated, currentView, preferences, user]);
+  }, [isAuthenticated, currentView, preferences, user, pendingProtectedView]);
 
-  // If session expires or user logs out while on a protected view, steer gracefully to login
+  // If unauthenticated on a protected route, remember requested path and redirect cleanly to /login
   useEffect(() => {
     if (!authLoading && !isAuthenticated && PROTECTED_VIEWS.has(currentView)) {
-      setCurrentView('login');
+      setPendingProtectedView(currentView);
+      navigateWithUrl('login', { replace: true });
     }
   }, [authLoading, isAuthenticated, currentView]);
 
-  // Check URL parameters for email verification or password reset tokens
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
-      const token = urlParams.get('token');
-      const action = urlParams.get('action');
-
-      if (token) {
-        setTokenParam(token);
-        if (action === 'reset-password' || window.location.pathname.includes('reset-password')) {
-          setCurrentView('reset-password');
-        } else {
-          setCurrentView('verify-email');
-        }
-      }
-    }
-  }, []);
-
   const handleNavigate = (view: string, nextTxFilters?: TransactionNavigationFilters) => {
-    if (view === 'transactions') {
-      setTxFilters(nextTxFilters || null);
-    }
-    setCurrentView(view);
+    didAutoRedirectOnAuthRef.current = true;
+    navigateWithUrl(view, { nextTxFilters: nextTxFilters || null });
   };
 
   const renderContent = () => {
@@ -230,7 +276,7 @@ const AppContent: React.FC = () => {
           <LoginPage
             onNavigate={handleNavigate}
             onSuccess={() =>
-              setCurrentView(user && user.onboarding_completed === false ? 'onboarding' : 'dashboard')
+              handleNavigate(user && user.onboarding_completed === false ? 'onboarding' : 'dashboard')
             }
           />
         );
@@ -246,7 +292,7 @@ const AppContent: React.FC = () => {
         return (
           <OnboardingWizard
             onComplete={() => {
-              setCurrentView('dashboard');
+              handleNavigate('dashboard');
             }}
           />
         );

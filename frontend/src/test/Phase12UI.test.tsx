@@ -259,4 +259,38 @@ describe('Phase 12 Frontend Transformation & Reminders Module', () => {
       expect(billsApi.processReminders).toHaveBeenCalledTimes(1);
     });
   });
+
+  it('resolves individual page URLs, preserves deep-link filters, and syncs browser History cleanly', async () => {
+    const { getPathForView, getViewFromLocation, syncBrowserUrl } = await import('../lib/routes');
+
+    expect(getPathForView('foundation')).toBe('/');
+    expect(getPathForView('bills')).toBe('/bills');
+    expect(getPathForView('reminders')).toBe('/reminders');
+    expect(getPathForView('assistant')).toBe('/assistant');
+
+    const txUrl = getPathForView('transactions', {
+      categoryId: 'cat-food',
+      transactionType: 'expense',
+    });
+    expect(txUrl).toBe('/transactions?categoryId=cat-food&type=expense');
+
+    const parsedTx = getViewFromLocation('/transactions', '?categoryId=cat-food&type=expense');
+    expect(parsedTx.view).toBe('transactions');
+    expect(parsedTx.txFilters).toEqual({
+      categoryId: 'cat-food',
+      transactionType: 'expense',
+    });
+
+    const parsedReset = getViewFromLocation('/', '?token=abc123&action=reset-password');
+    expect(parsedReset.view).toBe('reset-password');
+    expect(parsedReset.token).toBe('abc123');
+
+    syncBrowserUrl('bills');
+    expect(window.location.pathname).toBe('/bills');
+    expect(getViewFromLocation().view).toBe('bills');
+
+    // Cleanly restore root URL for downstream tests
+    syncBrowserUrl('foundation', { replace: true });
+    expect(window.location.pathname).toBe('/');
+  });
 });
